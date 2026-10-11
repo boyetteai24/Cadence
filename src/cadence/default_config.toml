@@ -30,8 +30,7 @@ mode = "tap_or_hold"
 # "claude" = Claude Haiku polishes each phrase (about a tenth of a cent per dictation).
 #            Needs your Anthropic API key in an environment variable (see below).
 # "local"  = a model running on your PC (Ollama, LM Studio, llama.cpp). Free and private.
-# With "claude" or "local", text is typed phrase by phrase at pauses instead of word by
-# word, because the AI needs whole phrases.
+# The AI sees your whole dictation at once (unless you turn on live typing below).
 llm = "none"
 
 # Claude API key: never put it in this file. Cadence reads it only from the
@@ -56,26 +55,30 @@ voice_commands = true     # say "new line" or "new paragraph"
 
 
 # ---------------------------------------------------------------------------
-#  Live typing (text appears while you talk)
+#  When text appears, and speech recognition
 # ---------------------------------------------------------------------------
 [stt]
-# "words"  = each word is typed once you're lag_words words past it, and
-#            everything is typed whenever you pause.
-# "pauses" = each phrase is typed when you pause.
-# "off"    = everything is typed after you stop.
-live_mode = "words"
-lag_words = 5             # lower = text follows your voice more closely, but a "no wait"
-                          # can only fix words that haven't been typed yet
-pass_interval = 0.4       # seconds between re-checks (lower = snappier, more GPU work)
+# By default nothing is typed until you stop talking; then your whole dictation is cleaned up
+# and pasted at once (like Wispr Flow). To have text appear while you talk, set
+# live_insert = true under [output] further down.
+#
+# Either way, Cadence transcribes in the background while you talk, so there's little left
+# to do when you stop:
+#   "pauses" = transcribe each phrase when you pause (whole phrases: most accurate)
+#   "words"  = transcribe word by word, a few words behind you (faster, a bit less accurate)
+#   "off"    = transcribe everything after you stop (slowest for long dictations)
+live_mode = "pauses"
 pause_seconds = 0.6       # a pause this long counts as the end of a phrase
-min_chunk_seconds = 2.0   # "pauses" mode: shortest phrase that's typed on its own
+min_chunk_seconds = 2.0   # "pauses": shortest phrase transcribed on its own
+lag_words = 5             # "words": how many words behind your voice it stays
+pass_interval = 0.4       # "words": seconds between re-checks (lower = more GPU work)
 
 # Speech recognition
 model = "large-v3-turbo"  # or "distil-large-v3" (faster), "small.en" (weak GPU/CPU)
 device = "auto"           # auto | cuda | cpu
 compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
 language = "en"           # "" = detect automatically (slightly slower)
-beam_size = 1             # 5 = slightly more accurate, a bit slower
+beam_size = 5             # 5 = more accurate; 1 = a bit faster, more mistakes
 vad_filter = true         # skip silence (also prevents made-up words)
 
 
@@ -83,12 +86,17 @@ vad_filter = true         # skip silence (also prevents made-up words)
 #  How text is typed
 # ---------------------------------------------------------------------------
 [output]
-# When you tap or click (hands-free), type text while you're still talking.
-# When you hold the shortcut, text always waits until you let go.
-live_insert = true
+# false = type nothing until you stop, then paste the whole cleaned-up dictation (best cleanup).
+# true  = when you tap or click (hands-free), type text while you're still talking.
+#         (Holding the shortcut always waits until you let go.) Corrections and the AI can't
+#         change text that's already been typed.
+live_insert = false
 method = "paste"          # "paste" (recommended) or "type" (types key by key)
 paste_keys = "ctrl+v"     # some terminals need "ctrl+shift+v"
-restore_clipboard = true  # put back what was on your clipboard afterwards
+# false = your dictation stays on the clipboard, so if it didn't land in a text box
+#         (cursor wasn't in one), just click where you want it and press Ctrl+V.
+# true  = put back whatever you had copied before.
+restore_clipboard = false
 paste_delay_ms = 400      # wait before restoring the clipboard (doesn't slow typing)
 trailing_space = true     # add a space so the next dictation doesn't run on
 

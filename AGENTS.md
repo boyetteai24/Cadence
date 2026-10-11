@@ -69,21 +69,25 @@ Input: the hotkey (`hotkey_down`/`hotkey_up`, modes `tap_or_hold` (default), `ho
 and the overlay's mic button (`click`) drive the same `Dictation` methods; Esc calls `cancel`.
 A tap shorter than `TAP_SECONDS` latches hands-free recording until the next press or click.
 
-Live typing (`stt.live_mode`) runs a thread per recording that hands parts of the audio to
-the worker as non-final `Job`s of the current `Utterance`, advancing `Dictation._cut`:
-- `"words"` (default, `streaming.py`): every `pass_interval` the not-yet-committed audio is
-  re-transcribed with word timestamps. Words that are `lag_words` behind the newest word and
-  identical in two consecutive passes are committed as an already-transcribed `Job(text=...)`.
-  At a pause (`pause_seconds`), everything is committed. Audio is cut halfway into the gap
-  after the last committed word. Falls back to `"pauses"` when `cleanup.llm` is on.
-- `"pauses"` (`segmenter.py`): at each pause after `min_chunk_seconds`, the phrase is queued
-  as audio and transcribed by the worker.
-Each part is transcribed with the utterance's earlier text as Whisper context, and cleaned
-with `continuation=True` when it continues an unfinished sentence (no forced capital).
-Cleaned text is typed immediately when the utterance is hands-free (tap/click) and
-`output.live_insert` is on; otherwise it is buffered and inserted with the final job, which
-covers all audio after the last cut. Never inject keystrokes while the user holds the
-hotkey. Cleanup can't reach back into text that was already typed.
+Background transcription (`stt.live_mode`) runs a thread per recording that hands parts of
+the audio to the worker as non-final `Job`s of the current `Utterance`, advancing
+`Dictation._cut`:
+- `"pauses"` (default, `segmenter.py`): at each pause after `min_chunk_seconds`, the phrase is
+  queued as audio and transcribed by the worker. Whole phrases keep accuracy high.
+- `"words"` (`streaming.py`): every `pass_interval` the not-yet-committed audio is
+  re-transcribed with word timestamps. Words `lag_words` behind the newest word and identical
+  in two consecutive passes are committed as an already-transcribed `Job(text=...)`; at a
+  pause everything is. Falls back to `"pauses"` when typing live with `cleanup.llm` on.
+Each part is transcribed with the utterance's earlier text as Whisper context, and its raw
+text is added to `Utterance.pending`. Pending text is cleaned (rules + LLM) and typed:
+- by default (`output.live_insert = false`), only at the final job, so the whole dictation
+  is cleaned in one pass (repeats and corrections spanning a pause get fixed, the LLM sees
+  everything), like Wispr Flow;
+- with `live_insert = true` and a hands-free utterance (tap/click), as each part arrives,
+  cleaned with `continuation=True` when it continues an unfinished sentence.
+The final job covers all audio after the last cut. Never inject keystrokes while the user
+holds the hotkey. With `restore_clipboard = false` (default) the whole dictation is left on
+the clipboard (`Injector.remember`), so text that missed a text box can be pasted.
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.

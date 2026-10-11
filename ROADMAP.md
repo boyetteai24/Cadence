@@ -32,6 +32,10 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - [x] Renamed to Cadence (package `cadence`, `python -m cadence`)
 - [x] All settings in one commented `settings.toml` in the project folder (git-ignored, created
       on first run). The Claude API key is read only from `ANTHROPIC_API_KEY`, never a file
+- [x] Wispr-style default from user feedback (v0.5.0): nothing typed until you stop, whole
+      dictation cleaned in one pass; phrases still transcribed during pauses ("pauses" mode,
+      beam size 5 for accuracy); dictation left on the clipboard; "or sorry" corrections;
+      repeats with apostrophes ("I'm using I'm using") collapsed; smarter correction alignment
 - [x] One-run overrides from the command line: `--llm claude`, `--set section.name=value`
 - [x] `COMMANDS.md`: copy-paste PowerShell cheat sheet in the project folder
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
@@ -79,6 +83,21 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - Rules-only mode handles corrections only with explicit markers and short replacements
   (≤3 words); everything else needs the LLM stage.
 - Some keyboard layouts/remote-desktop sessions may report keys differently to pynput.
+
+## User feedback log
+
+Real-use observations to learn from (newest first). Turn each into a rule + test, a dictionary
+entry, a prompt change, or a known limitation.
+
+- **2026-10-11, v0.4.0, rules only, words mode, compared with Wispr Flow** ("Wispr works better"):
+  - Prefers Wispr's behavior of showing nothing until done → v0.5.0 default (`live_insert = false`).
+  - "I'm using … I'm using" across a pause kept both → fixed (whole-dictation cleanup; apostrophe
+    repeats). "flow, or sorry, Cadence" kept "or sorry" → fixed ("or sorry" marker).
+  - Misheard: "settings.toml" → "using toml"; "didn't show" heard as "did show" → beam size 5,
+    whole-phrase transcription; suggest `[dictionary] words` for names.
+  - "and look, it works better": "look" as a filler, repeated sentences, too many commas →
+    needs the LLM stage; not safe as a rule.
+  - Wants the dictation recoverable when the cursor wasn't in a text box → left on clipboard.
 
 ## Performance benchmarks
 

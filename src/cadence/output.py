@@ -74,6 +74,18 @@ class PasteInjector:
                 target=self._restore, args=(previous, text), daemon=True
             ).start()
 
+    def remember(self, text: str) -> None:
+        """After a dictation typed in several parts: leave the whole of it on the clipboard
+        (when the clipboard isn't being restored), so it can be pasted again in full."""
+        if self.restore:
+            return
+        import pyperclip
+
+        try:
+            pyperclip.copy(text)
+        except Exception:
+            log.debug("Could not copy dictation to the clipboard", exc_info=True)
+
     def _restore(self, previous: str, ours: str) -> None:
         import pyperclip
 

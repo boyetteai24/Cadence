@@ -21,7 +21,9 @@ _STUTTER_WORD = re.compile(r"\b(\w+)(?:-\1)+\b", re.IGNORECASE)
 _STUTTER_PARTIAL = re.compile(r"\b(\w{1,2})-(?=\1\w)", re.IGNORECASE)
 
 # Immediately repeated 2-4 word phrase: "I want to, I want to go" -> "I want to go".
-_REPEAT_PHRASE = re.compile(r"\b(\w+(?:[ \t]+\w+){1,3})(?:[ \t,]+\1\b)+", re.IGNORECASE)
+_REPEAT_PHRASE = re.compile(
+    r"\b(\w+(?:'\w+)?(?:[ \t]+\w+(?:'\w+)?){1,3})(?:[ \t,]+\1\b)+", re.IGNORECASE
+)
 _REPEAT_WORD = re.compile(r"\b([A-Za-z]+(?:'[A-Za-z]+)?)(?:[ \t,]+\1\b)+", re.IGNORECASE)
 # Words people repeat on purpose ("had had", "very very", "no no no").
 _INTENTIONAL_REPEATS = {"had", "that", "very", "no", "so", "bye", "ha", "really", "yeah", "yes", "please"}
@@ -30,7 +32,7 @@ _INTENTIONAL_REPEATS = {"had", "that", "very", "no", "so", "bye", "ha", "really"
 _SCRATCH = re.compile(r"[,;.]?[ \t]*\b(?:scratch that|delete that)\b[,.!]?[ \t]*", re.IGNORECASE)
 # "at 3, no wait, 4" -> "at 4". Only unambiguous markers ("I mean" is often not a correction).
 _CORRECTION = re.compile(
-    r"[,;]?[ \t]*\b(?:no[,.]?[ \t]+wait|wait[,.]?[ \t]+no|sorry[,.]?[ \t]+I[ \t]+meant)\b[,.]?[ \t]*",
+    r"[,;]?[ \t]*\b(?:no[,.]?[ \t]+wait|wait[,.]?[ \t]+no|or[ \t]+sorry|sorry[,.]?[ \t]+I[ \t]+mean[t]?)\b[,.]?[ \t]*",
     re.IGNORECASE,
 )
 _CLAUSE_END = re.compile(r"[.!?,;\n]")
@@ -64,7 +66,19 @@ def apply_scratch_that(text: str) -> str:
     return text
 
 
+def _norm(word: str) -> str:
+    return re.sub(r"[^\w']", "", word.lower())
+
+
 def apply_corrections(text: str) -> str:
+    """"X, no wait, Y" / "X, or sorry, Y": replace the part of X that Y corrects.
+
+    - If Y starts with a word said just before ("at 3pm, no wait, at 4pm"), replace from that
+      word on (looking back at most 4 words; Y up to 8 words).
+    - Otherwise Y replaces only the last word ("at 3pm, no wait, 4pm"), and only if Y is
+      short (up to 3 words), so "there's no wait, the line is empty" is left alone.
+    Anything else is ambiguous and left for the LLM stage.
+    """
     for _ in range(5):
         m = _CORRECTION.search(text)
         if not m:
@@ -73,17 +87,24 @@ def apply_corrections(text: str) -> str:
         end = _CLAUSE_END.search(rest)
         replacement = rest[: end.start()] if end else rest
         tail = rest[len(replacement) :]
-        k = len(replacement.split())
+        new_words = replacement.split()
         prefix_words = prefix.split()
         stripped = prefix.rstrip()
         if not stripped or stripped[-1] in ".!?":
             # Correction starts a new sentence: just drop the marker.
             text = prefix + rest
-        elif 1 <= k <= 3 and len(prefix_words) > k:
-            # Replace the last k words with the corrected k words.
-            text = " ".join(prefix_words[:-k]) + " " + replacement.strip() + tail
+            continue
+        if not new_words:
+            break
+        first = _norm(new_words[0])
+        recent = [_norm(w) for w in prefix_words[-4:]]
+        if first in recent and len(new_words) <= 8:
+            cut = len(prefix_words) - (len(recent) - max(i for i, w in enumerate(recent) if w == first))
+        elif len(new_words) <= 3:
+            cut = len(prefix_words) - 1
         else:
             break  # ambiguous: leave it for the LLM stage
+        text = " ".join(prefix_words[:cut] + new_words) + tail
     return text
 
 
@@ -115,7 +136,10 @@ def tidy(text: str, continuation: bool = False) -> str:
 
 
 _SENTENCE_START = re.compile(r"(^|[.!?]\s+|\n)([a-z])")
-_ABBREVIATION = re.compile(r"(?:\b(?:e\.g|i\.e|etc|vs|mr|mrs|ms|dr|st|approx|cf)|\b\w)\.\s+$", re.I)
+# Abbreviations and initials ("J. Smith") don't end a sentence; numbers ("at 4. Then") do.
+_ABBREVIATION = re.compile(
+    r"(?:\b(?:[eE]\.g|[iI]\.e|etc|vs|[mM]r|[mM]rs|[mM]s|[dD]r|[sS]t|approx|cf)|\b[A-Z])\.\s+$"
+)
 
 
 def _capitalize_continuing(m: re.Match[str]) -> str:
