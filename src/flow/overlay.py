@@ -1,7 +1,7 @@
 """On-screen mic button and status pill, shown just above the taskbar.
 
-Idle: a small mic button (click to start listening, click again to stop). Drag it
-anywhere; the position is remembered in overlay.json next to the config file.
+Idle: a small mic button (click to start listening, click again to stop). Right-click and
+drag to move it; the position is remembered in overlay.json next to the config file.
 Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
 and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
 doesn't move your cursor and the paste still lands in the app you were typing in.
@@ -30,7 +30,6 @@ FG = "#f4f4f5"
 RED = "#ef4444"
 AMBER = "#f59e0b"
 BLUE = "#60a5fa"
-DRAG_THRESHOLD = 5  # pixels of movement before a press becomes a drag
 READY_SECONDS = 2.5
 ERROR_SECONDS = 4.0
 
@@ -148,9 +147,12 @@ class Overlay:
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
                                 highlightthickness=0, bd=0)
         self.canvas.pack()
-        self.canvas.bind("<ButtonPress-1>", self._on_press)
+        self.canvas.bind("<ButtonPress-1>", self._on_left_press)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        self.canvas.bind("<ButtonPress-3>", self._on_right_press)
+        self.canvas.bind("<ButtonRelease-3>", self._on_release)
         self._press: tuple[int, int, int, int] | None = None
+        self._press_button = "left"
         self._dragging = False
         root.update_idletasks()
         self.hwnd = None
@@ -232,13 +234,22 @@ class Overlay:
             log.debug("Overlay tick failed", exc_info=True)
         self.root.after(40, self._tick)
 
-    # Press + release without moving = click; press + move = drag the window.
-    # While the button is down we poll the real cursor and mouse-button state instead of
+    # Left click = start/stop dictation. Right-click and drag = move the button.
+    # While a button is down we poll the real cursor and mouse-button state instead of
     # relying on Tk motion/release events, which a no-activate window may not receive.
-    def _on_press(self, event) -> None:
+    def _on_left_press(self, event) -> None:
+        self._start_press("left", drag=False)
+
+    def _on_right_press(self, event) -> None:
+        self._start_press("right", drag=True)
+
+    def _start_press(self, button: str, drag: bool) -> None:
+        if self._press is not None:
+            return
         self._press = (*self._cursor(), *self._window_pos())
-        self._dragging = False
-        log.debug("Mic button pressed")
+        self._press_button = button
+        self._dragging = drag
+        log.debug("Mic button %s-pressed", button)
         self._poll_press()
 
     def _on_release(self, event) -> None:
@@ -248,14 +259,11 @@ class Overlay:
     def _poll_press(self) -> None:
         if self._press is None:
             return
-        px, py, wx, wy = self._press
-        cx, cy = self._cursor()
-        dx, dy = cx - px, cy - py
-        if not self._dragging and abs(dx) + abs(dy) >= DRAG_THRESHOLD:
-            self._dragging = True
         if self._dragging:
-            self._move(wx + dx, wy + dy)
-        if self._mouse_down():
+            px, py, wx, wy = self._press
+            cx, cy = self._cursor()
+            self._move(wx + cx - px, wy + cy - py)
+        if self._mouse_down(self._press_button):
             self.root.after(15, self._poll_press)
         else:
             self._finish_press()
@@ -294,12 +302,14 @@ class Overlay:
             return rect.left, rect.top
         return self.root.winfo_x(), self.root.winfo_y()
 
-    def _mouse_down(self) -> bool:
+    def _mouse_down(self, button: str) -> bool:
         if self.hwnd:
             import ctypes
 
             user32 = ctypes.windll.user32
-            vk = 0x02 if user32.GetSystemMetrics(23) else 0x01  # left-handed: buttons swapped
+            # GetAsyncKeyState reads physical buttons; honor "swap mouse buttons".
+            physical_left = (button == "left") != bool(user32.GetSystemMetrics(23))
+            vk = 0x01 if physical_left else 0x02  # VK_LBUTTON / VK_RBUTTON
             return bool(user32.GetAsyncKeyState(vk) & 0x8000)
         return self._press is not None  # Tk's release event ends the press
 

@@ -45,7 +45,7 @@ There are three ways to dictate:
 - **Tap `Ctrl+Win`** once and talk hands-free. Tap again to finish.
 - **Click the mic button** just above the taskbar, talk, then click the "Listening" pill to
   finish. Clicking it doesn't move your cursor, so the text still goes where you were typing.
-  **Drag** the button to move it; Flow remembers where you put it.
+  To move the button, **right-click and drag** it. Flow remembers where you put it.
 
 **When you tap or click, text appears as you talk.** Each time you pause briefly (about
 0.6 s), the phrase you just said is typed in while you carry on. When you hold the

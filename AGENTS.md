@@ -58,7 +58,7 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/flow/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
 | `src/flow/output.py` | `PasteInjector`, `TypeInjector` |
 | `src/flow/tray.py` | pystray icon (state colors, menu) |
-| `src/flow/overlay.py` | Unfocusable, draggable mic button + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
+| `src/flow/overlay.py` | Unfocusable mic button (left-click dictates, right-drag moves) + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
 | `src/flow/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
 | `src/flow/sounds.py` | Start/stop/error beeps |
 | `src/flow/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
