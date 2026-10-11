@@ -62,6 +62,23 @@ class Recorder:
         self._recording = True
         self._open()
 
+    def read(self, start: int) -> np.ndarray:
+        """Audio captured so far from sample `start` on, without stopping the recording."""
+        with self._lock:
+            chunks = self._chunks
+            total = sum(len(c) for c in chunks)
+            if start >= total:
+                return np.zeros(0, dtype=np.float32)
+            # Walk back from the newest chunk until we cover `start`; only copy that tail.
+            tail, pos = [], total
+            for c in reversed(chunks):
+                tail.append(c)
+                pos -= len(c)
+                if pos <= start:
+                    break
+        audio = np.concatenate(tail[::-1])
+        return audio[start - pos:]
+
     def stop(self) -> np.ndarray:
         self._recording = False
         self.level = 0.0

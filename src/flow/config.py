@@ -49,6 +49,11 @@ class SttConfig:
     language: str | None = "en"  # None = auto-detect (slightly slower)
     beam_size: int = 1  # 1 = greedy (fastest); 5 = slightly more accurate
     vad_filter: bool = True  # skip silent stretches; also curbs hallucinations
+    # Transcribe each phrase at the next pause while you keep talking, so text is ready
+    # (or typed live, see output.live_insert) almost as soon as you stop.
+    pause_split: bool = True
+    pause_seconds: float = 0.6  # how long a pause ends a phrase
+    min_chunk_seconds: float = 2.0  # don't split off phrases shorter than this
 
 
 @dataclass
@@ -73,6 +78,9 @@ class OutputConfig:
     restore_clipboard: bool = True
     paste_delay_ms: int = 400  # wait before restoring the clipboard (runs in background)
     trailing_space: bool = True  # so consecutive dictations don't run together
+    # Hands-free (tap or click): type each phrase as soon as it's transcribed, while you
+    # keep talking. When holding the hotkey, text always waits until you let go.
+    live_insert: bool = True
 
 
 @dataclass

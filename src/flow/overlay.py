@@ -1,6 +1,7 @@
 """On-screen mic button and status pill, shown just above the taskbar.
 
-Idle: a small mic button (click to start listening, click again to stop).
+Idle: a small mic button (click to start listening, click again to stop). Drag it
+anywhere; the position is remembered in overlay.json next to the config file.
 Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
 and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
 doesn't move your cursor and the paste still lands in the app you were typing in.
@@ -10,6 +11,7 @@ Tk runs on its own thread; the pill polls Dictation state.
 from __future__ import annotations
 
 import collections
+import json
 import logging
 import sys
 import threading
@@ -28,8 +30,46 @@ FG = "#f4f4f5"
 RED = "#ef4444"
 AMBER = "#f59e0b"
 BLUE = "#60a5fa"
+DRAG_THRESHOLD = 5  # pixels of movement before a press becomes a drag
 READY_SECONDS = 2.5
 ERROR_SECONDS = 4.0
+
+
+def _state_file():
+    from flow.config import config_dir
+
+    return config_dir() / "overlay.json"
+
+
+def load_position() -> tuple[int, int] | None:
+    try:
+        data = json.loads(_state_file().read_text("utf-8"))
+        return int(data["x"]), int(data["y"])
+    except Exception:
+        return None
+
+
+def save_position(x: int, y: int) -> None:
+    try:
+        path = _state_file()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"x": x, "y": y}), "utf-8")
+    except OSError:
+        log.debug("Could not save overlay position", exc_info=True)
+
+
+def _on_screen(root, x: int, y: int) -> bool:
+    """Is the saved spot still visible (e.g. a second monitor may have been unplugged)?"""
+    cx, cy = x + WIDTH // 2, y + HEIGHT // 2
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        user32 = ctypes.windll.user32
+        user32.MonitorFromPoint.argtypes = (wintypes.POINT, wintypes.DWORD)
+        user32.MonitorFromPoint.restype = wintypes.HANDLE
+        return bool(user32.MonitorFromPoint(wintypes.POINT(cx, cy), 0))  # 0 = DEFAULTTONULL
+    return 0 <= cx < root.winfo_screenwidth() and 0 <= cy < root.winfo_screenheight()
 
 
 @dataclass
@@ -108,7 +148,11 @@ class Overlay:
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
                                 highlightthickness=0, bd=0)
         self.canvas.pack()
-        self.canvas.bind("<Button-1>", self._on_click)
+        self.canvas.bind("<ButtonPress-1>", self._on_press)
+        self.canvas.bind("<B1-Motion>", self._on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        self._press: tuple[int, int, int, int] | None = None
+        self._dragging = False
         root.update_idletasks()
         self.hwnd = None
         if sys.platform == "win32":
@@ -119,6 +163,12 @@ class Overlay:
         self._tick()
 
     def _position(self, root) -> tuple[int, int]:
+        saved = load_position()
+        if saved and _on_screen(root, *saved):
+            return saved
+        return self._default_position(root)
+
+    def _default_position(self, root) -> tuple[int, int]:
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
         bottom = sh - 48  # assume a taskbar if we can't ask Windows
         if sys.platform == "win32":
@@ -183,7 +233,29 @@ class Overlay:
             log.debug("Overlay tick failed", exc_info=True)
         self.root.after(40, self._tick)
 
-    def _on_click(self, event) -> None:
+    # Press + release without moving = click; press + move = drag the window.
+    def _on_press(self, event) -> None:
+        self._press = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
+        self._dragging = False
+
+    def _on_drag(self, event) -> None:
+        if self._press is None:
+            return
+        px, py, wx, wy = self._press
+        dx, dy = event.x_root - px, event.y_root - py
+        if not self._dragging and abs(dx) + abs(dy) < DRAG_THRESHOLD:
+            return
+        self._dragging = True
+        self.root.geometry(f"+{wx + dx}+{wy + dy}")
+
+    def _on_release(self, event) -> None:
+        if self._press is None:
+            return
+        self._press = None
+        if self._dragging:
+            self._dragging = False
+            save_position(self.root.winfo_x(), self.root.winfo_y())
+            return
         if self.view.kind in ("button", "listening"):
             # Off the Tk thread: opening the microphone can take a moment.
             threading.Thread(target=self.dictation.click, daemon=True).start()

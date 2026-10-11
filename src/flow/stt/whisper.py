@@ -106,7 +106,7 @@ class FasterWhisperTranscriber:
         self.active_device = device
         log.info("Whisper ready on %s in %.1fs", device, time.perf_counter() - t0)
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> Transcript:
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, context: str = "") -> Transcript:
         if self._model is None:
             self.load()
         if sample_rate != 16000:
@@ -117,7 +117,8 @@ class FasterWhisperTranscriber:
             beam_size=self.beam_size,
             vad_filter=self.vad_filter,
             vad_parameters={"min_silence_duration_ms": 500},
-            initial_prompt=self.initial_prompt,
+            # Earlier phrases of the same dictation keep wording and style consistent.
+            initial_prompt=" ".join(p for p in (self.initial_prompt, context[-300:]) if p) or None,
             # Each dictation is independent; conditioning only causes repetition loops.
             condition_on_previous_text=False,
             without_timestamps=True,

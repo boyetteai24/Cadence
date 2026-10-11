@@ -22,6 +22,11 @@ compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
 language = "en"           # "" = auto-detect
 beam_size = 1             # 5 is slightly more accurate and a bit slower
 vad_filter = true
+# Transcribe each phrase at the next pause while you keep talking, so the text is ready
+# almost as soon as you stop (and typed live when hands-free, see output.live_insert).
+pause_split = true
+pause_seconds = 0.6       # a pause this long ends a phrase
+min_chunk_seconds = 2.0
 
 [cleanup]
 remove_fillers = true
@@ -42,6 +47,9 @@ paste_keys = "ctrl+v"
 restore_clipboard = true
 paste_delay_ms = 400       # delay before restoring your clipboard (doesn't slow pasting)
 trailing_space = true
+# Hands-free (tap or click): type each phrase while you keep talking. When you hold the
+# shortcut, text always waits until you let go.
+live_insert = true
 
 [ui]
 sounds = true
