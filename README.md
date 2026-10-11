@@ -46,9 +46,12 @@ There are three ways to dictate:
 
 - **Hold `Ctrl+Win`**, speak, and let go.
 - **Tap `Ctrl+Win`** once and talk hands-free. Tap again to finish.
-- **Click the mic button** just above the taskbar, talk, then click the "Listening" pill to
-  finish. Clicking it doesn't move your cursor, so the text still goes where you were typing.
-  To move the button, **right-click and drag** it. Cadence remembers where you put it.
+- **Click the mic button**: just above the taskbar there's a slim bar; hover it and it turns
+  into a mic button. Click, talk, then click the "Listening" pill to finish. Clicking it
+  doesn't move your cursor, so the text still goes where you were typing.
+  To move it, **right-click and drag**. While you drag, outlines show the four snap spots
+  (the middle of the bottom, top, left and right edges of the screen); drop it near one and
+  it snaps there, or drop it anywhere else to leave it there. Cadence remembers where you put it.
 
 **The text appears when you finish**, like Wispr Flow: your whole dictation is cleaned up
 in one go and pasted at once. Cadence transcribes each phrase in the background during your

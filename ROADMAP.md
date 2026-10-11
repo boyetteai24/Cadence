@@ -42,6 +42,10 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       was heard and typed; optional correction and notes; every review kept privately in
       feedback.jsonl; the 20 most recent are sent to the AI cleanup on every request;
       `cadence feedback --copy` exports them for review
+- [x] Wispr-style mic button (v0.10.0): a slim bar that turns into a mic button on hover;
+      right-drag shows four snap spots (middle of each screen edge, on the monitor you're on)
+      and snaps when dropped near one, otherwise stays where dropped; snapped edge remembered
+      and re-centred if the screen size changes
 - [x] `settings.toml` tracked on GitHub (owner's choice): edited on GitHub, then `git pull`;
       tray "Edit settings on GitHub"; a mistake in it stops Cadence with a clear message
 - [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
@@ -78,7 +82,8 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - **Windows tests (2026-10-10):** transcription and overlay work on CUDA. The paste went to
   `SearchHost.exe`: releasing Ctrl+Win opened Start/Search, which stole focus (the Start-menu
   mask key was injected from inside the hook callback, too early). Fixed as above; needs re-test.
-- The mic button's click handling is untested on real hardware (Tk not available in the dev sandbox).
+- The hover bar and snap outlines were checked under a virtual X display, not yet on Windows
+  (hover detection there polls the cursor position, like the drag).
 - Clipboard restore only preserves text; images/files on the clipboard are left replaced by the
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Cadence (Windows UIPI).
