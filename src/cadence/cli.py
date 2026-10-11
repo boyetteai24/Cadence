@@ -9,7 +9,7 @@
 
 Any command also takes one-run overrides that leave settings.toml unchanged:
     cadence --llm claude
-    cadence --set stt.lag_words=3 --set hotkey.mode=hold
+    cadence --set stt.beam_size=1 --set hotkey.mode=hold
 """
 
 from __future__ import annotations
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("-v", "--verbose", action="store_true")
     parser.add_argument(
         "--set", action="append", default=[], metavar="SECTION.NAME=VALUE",
-        help="change a setting for this run only, e.g. --set stt.lag_words=3 (repeatable; "
+        help="change a setting for this run only, e.g. --set stt.beam_size=1 (repeatable; "
              "settings.toml is not changed)",
     )
     parser.add_argument(

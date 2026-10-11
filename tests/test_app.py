@@ -34,7 +34,7 @@ class FakeTranscriber:
     def load(self):
         pass
 
-    def transcribe(self, audio, sample_rate=16000, context="", word_timestamps=False):
+    def transcribe(self, audio, sample_rate=16000, context=""):
         return Transcript(self.text, "en", len(audio) / sample_rate)
 
 
@@ -49,7 +49,7 @@ class FakeInjector:
 def make(text="um so this is a test", audio=None):
     cfg = Config()
     cfg.ui.sounds = False
-    cfg.stt.live_mode = "off"  # FakeRecorder can't be read while recording anyway
+    cfg.stt.background = False  # FakeRecorder can't be read while recording anyway
     if audio is None:
         audio = (np.sin(np.linspace(0, 1000, 32000)) * 0.3).astype(np.float32)
     injector = FakeInjector()
@@ -164,7 +164,7 @@ def test_escape_cancels_hands_free_recording():
     assert d.state == "recording"
 
 
-# --- pause splitting / live insertion -----------------------------------------------
+# --- background transcription during pauses ---------------------------------------------
 
 def speech_with_pauses():
     t = np.arange(int(2.5 * 16000)) / 16000
@@ -193,7 +193,7 @@ class CountingTranscriber(FakeTranscriber):
         self.calls = 0
         self.contexts = []
 
-    def transcribe(self, audio, sample_rate=16000, context="", word_timestamps=False):
+    def transcribe(self, audio, sample_rate=16000, context=""):
         self.calls += 1
         self.contexts.append(context)
         return Transcript(f"phrase {self.calls}.", "en", len(audio) / sample_rate)
@@ -203,8 +203,6 @@ def streaming_app(mode="tap_or_hold"):
     cfg = Config()
     cfg.ui.sounds = False
     cfg.hotkey.mode = mode
-    cfg.stt.live_mode = "pauses"
-    cfg.output.live_insert = True
     injector = FakeInjector()
     transcriber = CountingTranscriber()
     d = Dictation(cfg, StreamingRecorder(speech_with_pauses()), transcriber,
@@ -220,18 +218,6 @@ def wait_for(predicate, timeout=6.0):
     return predicate()
 
 
-def test_hands_free_types_phrases_while_still_listening():
-    d, injector, transcriber = streaming_app()
-    d.click()
-    assert wait_for(lambda: len(injector.inserted) >= 2)  # two phrases typed live
-    assert d.state == "recording"
-    d.click()
-    wait_idle(d)
-    assert "".join(injector.inserted) == "Phrase 1. Phrase 2. Phrase 3. "
-    assert d.last_result.text == "Phrase 1. Phrase 2. Phrase 3. "
-    assert transcriber.contexts[1] == "phrase 1."  # earlier text given as context
-
-
 def test_holding_buffers_until_release_then_inserts_once():
     d, injector, transcriber = streaming_app(mode="hold")
     d.hotkey_down(now=0.0)
@@ -240,6 +226,18 @@ def test_holding_buffers_until_release_then_inserts_once():
     d.hotkey_up(now=10.0)
     wait_idle(d)
     assert injector.inserted == ["Phrase 1. Phrase 2. Phrase 3. "]
+    assert transcriber.contexts[1] == "phrase 1."  # earlier text given to Whisper as context
+
+
+def test_background_off_transcribes_once_after_stop():
+    d, injector, transcriber = streaming_app(mode="hold")
+    d.cfg.stt.background = False
+    d.hotkey_down(now=0.0)
+    time.sleep(1.5)
+    assert transcriber.calls == 0
+    d.hotkey_up(now=10.0)
+    wait_idle(d)
+    assert transcriber.calls == 1 and injector.inserted == ["Phrase 1. "]
 
 
 def test_cancel_discards_buffered_phrases():
@@ -251,18 +249,7 @@ def test_cancel_discards_buffered_phrases():
     assert injector.inserted == []
 
 
-def test_live_insert_can_be_disabled():
-    d, injector, transcriber = streaming_app()
-    d.cfg.output.live_insert = False
-    d.click()
-    assert wait_for(lambda: transcriber.calls >= 2)
-    assert injector.inserted == []
-    d.click()
-    wait_idle(d)
-    assert injector.inserted == ["Phrase 1. Phrase 2. Phrase 3. "]
-
-
-# --- default: nothing typed until you stop, whole dictation cleaned at once -----------------
+# --- whole dictation cleaned at once -------------------------------------------------------
 
 class ScriptedTranscriber(FakeTranscriber):
     def __init__(self, parts):
@@ -270,7 +257,7 @@ class ScriptedTranscriber(FakeTranscriber):
         self.parts = list(parts)
         self.calls = 0
 
-    def transcribe(self, audio, sample_rate=16000, context="", word_timestamps=False):
+    def transcribe(self, audio, sample_rate=16000, context=""):
         self.calls += 1
         text = self.parts.pop(0) if self.parts else ""
         return Transcript(text, "en", len(audio) / sample_rate)
@@ -287,17 +274,8 @@ class RecordingLlm:
         return text
 
 
-class RememberingInjector(FakeInjector):
-    def __init__(self):
-        super().__init__()
-        self.remembered = []
-
-    def remember(self, text):
-        self.remembered.append(text)
-
-
 def default_app(parts, llm=None, injector=None):
-    cfg = Config()  # defaults: live_mode "pauses", live_insert False
+    cfg = Config()  # defaults: background transcription during pauses
     cfg.ui.sounds = False
     injector = injector or FakeInjector()
     transcriber = ScriptedTranscriber(parts)
@@ -327,14 +305,3 @@ def test_llm_sees_the_whole_dictation_once():
     d.click()
     wait_idle(d)
     assert llm.seen == ["One two three. Four five six. Seven."]
-
-
-def test_whole_dictation_is_left_on_the_clipboard_after_live_typing():
-    injector = RememberingInjector()
-    d, injector, transcriber = default_app(["one.", "two.", "three."], injector=injector)
-    d.cfg.output.live_insert = True
-    d.click()
-    assert wait_for(lambda: len(injector.inserted) >= 2)
-    d.click()
-    wait_idle(d)
-    assert injector.remembered == ["One. Two. Three. "]

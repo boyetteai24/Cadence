@@ -27,8 +27,6 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       automatically if it still grabbed focus before pasting; our own injected keys ignored
 - [x] Pause splitting: phrases transcribed at each pause while you talk; typed live when
       hands-free, buffered while the hotkey is held; earlier text passed as Whisper context
-- [x] Live word-by-word typing (default `live_mode = "words"`): words typed once 5 words
-      behind and stable across two passes, everything at pauses; continuation-aware cleanup
 - [x] Renamed to Cadence (package `cadence`, `python -m cadence`)
 - [x] All settings in one commented `settings.toml` in the project folder (git-ignored, created
       on first run). The Claude API key is read only from `ANTHROPIC_API_KEY`, never a file
@@ -37,6 +35,9 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       beam size 5 for accuracy); dictation left on the clipboard; "or sorry" corrections;
       repeats with apostrophes ("I'm using I'm using") collapsed; smarter correction alignment
 - [x] Claude Haiku cleanup on by default (v0.6.0), active only when `ANTHROPIC_API_KEY` is set
+- [x] Removed live typing (v0.8.0, owner's decision): word-by-word mode, `live_insert`,
+      continuation cleanup and word timestamps are gone; text is always typed when you stop.
+      Background transcription during pauses stays (`stt.background`) for a short wait
 - [x] `settings.toml` tracked on GitHub (owner's choice): edited on GitHub, then `git pull`;
       tray "Edit settings on GitHub"; a mistake in it stops Cadence with a clear message
 - [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
@@ -52,7 +53,6 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 
 - [ ] **Validate on target hardware** (Windows 11 + NVIDIA GPU): run the full app, fill in the
       benchmark table below, tune defaults (`paste_delay_ms`, `beam_size`, model choice)
-- [ ] Live preview of the current (not yet finished) phrase in the overlay
 - [ ] App-aware behavior: detect the foreground app (e.g. terminals use `ctrl+shift+v`;
       code editors skip trailing punctuation; chat apps casual tone)
 - [ ] Exclude dictation from Windows clipboard history (`ExcludeClipboardContentFromMonitorProcessing`)
@@ -79,11 +79,8 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Cadence (Windows UIPI).
   Run Cadence elevated if you need to dictate into elevated apps.
-- Live insertion types each phrase separately, so "scratch that" or a correction can only fix
-  text within the current phrase, and the optional LLM sees one phrase at a time.
-- Live typing ("words" and "pauses" modes) has only been tested with simulated audio;
-  `lag_words`, `pass_interval` and `pause_seconds` may need tuning on real speech and GPU.
-  Word mode re-transcribes about twice a second, so the GPU is busier while you talk.
+- Background transcription has only been tested with simulated audio; `pause_seconds` and
+  `min_chunk_seconds` may need tuning on real speech.
 - `type` output mode sends newlines as Enter, which submits messages in chat apps.
 - Rules-only mode handles corrections only with explicit markers and short replacements
   (≤3 words); everything else needs the LLM stage.

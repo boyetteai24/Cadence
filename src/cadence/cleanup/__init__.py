@@ -22,18 +22,13 @@ class CleanupChain:
         self.last_timings: dict[str, float] = {}
         self.last_llm_status = ""  # what the LLM stage did on the last call, for diagnostics
 
-    def clean(self, text: str, continuation: bool = False) -> str:
-        """continuation=True: `text` continues a sentence already typed (live word mode);
-        such fragments get the rules stage only, since an LLM needs whole sentences."""
+    def clean(self, text: str) -> str:
         self.last_timings = {}
         t0 = time.perf_counter()
-        text = self.rules.clean(text, continuation) if continuation else self.rules.clean(text)
+        text = self.rules.clean(text)
         self.last_timings["rules"] = time.perf_counter() - t0
         if self.llm is None:
             self.last_llm_status = "off"
-            return text
-        if continuation:
-            self.last_llm_status = "skipped (sentence fragment)"
             return text
         if len(text.split()) < self.min_words_for_llm:
             self.last_llm_status = f"skipped (fewer than {self.min_words_for_llm} words)"

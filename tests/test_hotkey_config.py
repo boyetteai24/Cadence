@@ -89,17 +89,17 @@ def test_one_run_overrides():
     from cadence.config import Config, apply_overrides
 
     cfg = Config()
-    changes = apply_overrides(cfg, ["cleanup.llm=claude", "stt.lag_words=3",
-                                    "stt.pass_interval=1", "ui.sounds=false",
+    changes = apply_overrides(cfg, ["cleanup.llm=claude", "stt.beam_size=3",
+                                    "stt.pause_seconds=1", "ui.sounds=false",
                                     'hotkey.combo="ctrl+alt+space"', "hotkey.mode=hold"])
-    assert cfg.cleanup.llm == "claude" and cfg.stt.lag_words == 3
-    assert cfg.stt.pass_interval == 1.0 and cfg.ui.sounds is False
+    assert cfg.cleanup.llm == "claude" and cfg.stt.beam_size == 3
+    assert cfg.stt.pause_seconds == 1.0 and cfg.ui.sounds is False
     assert cfg.hotkey.combo == "ctrl+alt+space" and cfg.hotkey.mode == "hold"
     assert changes[0] == "cleanup.llm = 'claude'"
 
 
 @pytest.mark.parametrize("bad", ["cleanup.llm=gpt", "nope.x=1", "cleanup.nope=1", "llm=claude",
-                                 "stt.lag_words=many", "ui.sounds=yes", "cleanup.llm"])
+                                 "stt.beam_size=many", "ui.sounds=yes", "cleanup.llm"])
 def test_bad_overrides_are_rejected(bad):
     from cadence.config import Config, apply_overrides
 

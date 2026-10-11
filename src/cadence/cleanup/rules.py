@@ -119,9 +119,8 @@ def apply_replacements(text: str, replacements: dict[str, str]) -> str:
     return text
 
 
-def tidy(text: str, continuation: bool = False) -> str:
-    """Normalize spacing/punctuation and capitalize sentence starts. With continuation=True
-    the text continues a sentence already typed, so its first word keeps its case."""
+def tidy(text: str) -> str:
+    """Normalize spacing/punctuation and capitalize sentence starts."""
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r" +([,.!?;:])", r"\1", text)
@@ -131,7 +130,7 @@ def tidy(text: str, continuation: bool = False) -> str:
     # Standalone pronoun "i" / "i'm" -> "I" (but not "i.e.").
     text = re.sub(r"(?<![\w'.-])i(?=[\s,!?;:]|'[a-z]|\.(?!\w)|$)", "I", text)
     # Capitalize sentence starts (start of text, after .!? or a newline).
-    text = _SENTENCE_START.sub(_capitalize_continuing if continuation else _capitalize, text)
+    text = _SENTENCE_START.sub(_capitalize, text)
     return text.strip()
 
 
@@ -140,12 +139,6 @@ _SENTENCE_START = re.compile(r"(^|[.!?]\s+|\n)([a-z])")
 _ABBREVIATION = re.compile(
     r"(?:\b(?:[eE]\.g|[iI]\.e|etc|vs|[mM]r|[mM]rs|[mM]s|[dD]r|[sS]t|approx|cf)|\b[A-Z])\.\s+$"
 )
-
-
-def _capitalize_continuing(m: re.Match[str]) -> str:
-    if m.start() == 0 and m.group(1) == "":
-        return m.group(0)  # first word continues the previous text's sentence
-    return _capitalize(m)
 
 
 def _capitalize(m: re.Match[str]) -> str:
@@ -167,7 +160,7 @@ class RuleCleaner:
         self.voice_commands = voice_commands
         self.replacements = replacements or {}
 
-    def clean(self, text: str, continuation: bool = False) -> str:
+    def clean(self, text: str) -> str:
         if self.voice_commands:
             text = apply_voice_commands(text)
         text = apply_scratch_that(text)
@@ -176,4 +169,4 @@ class RuleCleaner:
             text = collapse_repetitions(text)
         text = apply_corrections(text)
         text = apply_replacements(text, self.replacements)
-        return tidy(text, continuation)
+        return tidy(text)

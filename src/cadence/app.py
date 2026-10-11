@@ -36,14 +36,12 @@ class Result:
 
 @dataclass
 class Utterance:
-    """One dictation (press to release, or click to click). With pause splitting it is
-    processed as several segments; `result` accumulates across them."""
+    """One dictation (press to release, or click to click). With background transcription
+    it is processed as several segments; `result` accumulates across them."""
 
-    hands_free: bool = False  # True once the user isn't holding keys: safe to type live
     cancelled: bool = False
     segments: int = 0
-    pending: list[str] = field(default_factory=list)  # raw text transcribed, not yet typed
-    typed_raw: str = ""  # raw text of what has already been typed
+    pending: list[str] = field(default_factory=list)  # raw text of the segments so far
     context: str = ""  # recent raw transcript, given to Whisper for continuity
     stopped_at: float | None = None  # when the user finished speaking
     result: Result = field(default_factory=Result)
@@ -54,7 +52,6 @@ class Job:
     audio: np.ndarray
     utterance: Utterance
     final: bool
-    text: str | None = None  # already transcribed (live word mode): skip speech-to-text
 
 
 class Dictation:
@@ -131,10 +128,10 @@ class Dictation:
             self._utterance = Utterance()
             self._cut = 0
             self._set_state(RECORDING)
-        live = self.live_mode()
-        if live != "off" and hasattr(self.recorder, "read"):
-            target = self._type_words_live if live == "words" else self._split_on_pauses
-            threading.Thread(target=target, args=(self._utterance,), daemon=True).start()
+        if self.cfg.stt.background and hasattr(self.recorder, "read"):
+            threading.Thread(
+                target=self._split_on_pauses, args=(self._utterance,), daemon=True
+            ).start()
         if self.cfg.ui.sounds:
             sounds.start()
 
@@ -156,57 +153,9 @@ class Dictation:
         if self.cfg.ui.sounds:
             sounds.stop()
 
-    def live_mode(self) -> str:
-        mode = self.cfg.stt.live_mode
-        if mode == "words" and self.cfg.cleanup.llm != "none" and self.cfg.output.live_insert:
-            return "pauses"  # typed live, an LLM would only ever see sentence fragments
-        return mode
-
-    def _type_words_live(self, utterance: Utterance) -> None:
-        """While recording, re-transcribe the not-yet-typed audio every pass_interval and
-        commit words that are lag_words behind and stable across two passes (all words at
-        a pause). See streaming.py. Audio before the last committed word is dropped."""
-        from cadence import streaming
-        from cadence.segmenter import speech_bounds
-
-        sr = self.cfg.audio.sample_rate
-        stt = self.cfg.stt
-        prev: list | None = None
-        while True:
-            time.sleep(stt.pass_interval)
-            with self._lock:
-                if self.state != RECORDING or self._utterance is not utterance:
-                    return
-                base = self._cut
-            audio = self.recorder.read(base)
-            if len(audio) < 0.5 * sr:
-                continue
-            has_speech, silence = speech_bounds(audio, sr)
-            if not has_speech:
-                continue
-            at_pause = silence >= stt.pause_seconds
-            words = self.transcriber.transcribe(
-                audio, sr, context=utterance.context, word_timestamps=True
-            ).words
-            k = streaming.words_to_commit(prev, words, stt.lag_words, at_pause)
-            if k == 0:
-                prev = words
-                continue
-            cut = streaming.cut_seconds(words, k, len(audio) / sr)
-            text = streaming.join_words(words[:k])
-            with self._lock:
-                # If the user stopped meanwhile, the final job already covers this audio.
-                if self.state != RECORDING or self._utterance is not utterance:
-                    return
-                self._cut = base + int(cut * sr)
-                utterance.context = f"{utterance.context} {text}".strip()[-400:]
-                self._pending += 1
-                self._jobs.put(Job(audio[: int(cut * sr)], utterance, final=False, text=text))
-            prev = streaming.shift(words[k:], cut)
-
     def _split_on_pauses(self, utterance: Utterance) -> None:
         """While recording, hand each finished phrase to the worker at the next pause, so
-        it's transcribed while the user keeps talking (and typed live when hands-free)."""
+        it's transcribed while the user keeps talking. Nothing is typed until they stop."""
         from cadence.segmenter import find_pause_cut
 
         sr = self.cfg.audio.sample_rate
@@ -227,8 +176,6 @@ class Dictation:
 
     def _set_latched(self, latched: bool) -> None:
         self._latched = latched
-        if latched:
-            self._utterance.hands_free = True
 
     def toggle(self) -> None:
         if self.state == RECORDING:
@@ -303,27 +250,24 @@ class Dictation:
         return utterance.result
 
     def _process_job(self, job: Job) -> None:
-        """Transcribe one segment, then type what's pending now or keep it for later.
+        """Transcribe one segment; at the final one, clean and type the whole dictation.
 
-        Segments of one utterance arrive in order. Pending text is cleaned and typed at the
-        final segment, or right away when typing live (hands-free with output.live_insert).
-        Cleaning everything pending in one go lets the rules and the LLM see across the
-        pauses where the audio was split (a repeat or a "no wait" spanning two segments).
+        Segments of one utterance arrive in order. Cleaning all their text in one go lets the
+        rules and the LLM see across the pauses where the audio was split (a repeat or a
+        "no wait" spanning two segments).
         """
         u = job.utterance
         if u.cancelled:
             return
         u.segments += 1
         self.last_result = u.result
-        raw = self._transcribe(job.audio, u, alone=job.final and u.segments == 1, raw=job.text)
+        raw = self._transcribe(job.audio, u, alone=job.final and u.segments == 1)
         if raw:
             u.pending.append(raw)
-        live = u.hands_free and self.cfg.output.live_insert
-        if not (job.final or live) or not u.pending:
+        if not job.final or not u.pending:
             return
-        pending, u.pending = " ".join(u.pending), []
-        text = self._clean(pending, u)
-        u.typed_raw = f"{u.typed_raw} {pending}".strip()
+        text = self._clean(" ".join(u.pending), u)
+        u.pending = []
         if not text or u.cancelled:
             return
         if self.before_insert:
@@ -331,42 +275,34 @@ class Dictation:
         t0 = time.perf_counter()
         self.injector.insert(text)
         u.result.timings["insert"] = time.perf_counter() - t0
-        u.result.text += text
+        u.result.text = text
         u.result.skipped = None
-        if job.final:
-            if u.segments > 1 and hasattr(self.injector, "remember"):
-                self.injector.remember(u.result.text)  # whole dictation, not the last part
-            if u.stopped_at is not None:
-                # The latency the user feels: from finishing speaking to text appearing.
-                u.result.timings["after_stop"] = time.perf_counter() - u.stopped_at
-                log.info(
-                    "Dictated %.1fs audio in %d segment(s) | text appeared %.0fms after you "
-                    "stopped", u.result.audio_seconds, u.segments,
-                    u.result.timings["after_stop"] * 1000,
-                )
+        if u.stopped_at is not None:
+            # The latency the user feels: from finishing speaking to text appearing.
+            u.result.timings["after_stop"] = time.perf_counter() - u.stopped_at
+            log.info(
+                "Dictated %.1fs audio in %d segment(s) | text appeared %.0fms after you stopped",
+                u.result.audio_seconds, u.segments, u.result.timings["after_stop"] * 1000,
+            )
 
-    def _transcribe(
-        self, audio: np.ndarray, u: Utterance, alone: bool, raw: str | None = None
-    ) -> str:
+    def _transcribe(self, audio: np.ndarray, u: Utterance, alone: bool) -> str:
         """Speech to raw text for one segment ("" if there's nothing to transcribe)."""
         sr = self.cfg.audio.sample_rate
         result = u.result
         seconds = len(audio) / sr
         result.audio_seconds += seconds
-        if raw is None:
-            # The short-tap guard only applies to a whole recording, not a trailing segment.
-            if alone and seconds < self.cfg.audio.min_seconds:
-                result.skipped = "too short"
-                return ""
-            if len(audio) == 0 or float(np.max(np.abs(audio))) < self.cfg.audio.min_peak:
-                result.skipped = result.skipped or "silence"
-                return ""
-            t0 = time.perf_counter()
-            raw = self.transcriber.transcribe(audio, sr, context=u.context).text
-            elapsed = time.perf_counter() - t0
-            result.timings["stt"] = result.timings.get("stt", 0.0) + elapsed
-            log.info("Segment %d: %.1fs audio | stt=%.0fms", u.segments, seconds, elapsed * 1000)
-        raw = raw.strip()
+        # The short-tap guard only applies to a whole recording, not a trailing segment.
+        if alone and seconds < self.cfg.audio.min_seconds:
+            result.skipped = "too short"
+            return ""
+        if len(audio) == 0 or float(np.max(np.abs(audio))) < self.cfg.audio.min_peak:
+            result.skipped = result.skipped or "silence"
+            return ""
+        t0 = time.perf_counter()
+        raw = self.transcriber.transcribe(audio, sr, context=u.context).text.strip()
+        elapsed = time.perf_counter() - t0
+        result.timings["stt"] = result.timings.get("stt", 0.0) + elapsed
+        log.info("Segment %d: %.1fs audio | stt=%.0fms", u.segments, seconds, elapsed * 1000)
         if not raw:
             result.skipped = result.skipped or "no speech"
             return ""
@@ -375,18 +311,15 @@ class Dictation:
         return raw
 
     def _clean(self, raw: str, u: Utterance) -> str:
-        """Rules (+ LLM) cleanup of text about to be typed, with a trailing space."""
+        """Rules (+ LLM) cleanup of the whole dictation, with a trailing space."""
         result = u.result
-        # Continues a sentence that's already typed: don't capitalize its first word.
-        continuation = bool(u.typed_raw) and not u.typed_raw.rstrip().endswith((".", "!", "?"))
         t0 = time.perf_counter()
-        text = self.cleaner.clean(raw, continuation=True) if continuation else self.cleaner.clean(raw)
+        text = self.cleaner.clean(raw)
         timings = {"cleanup": time.perf_counter() - t0}
         timings.update(
             {f"cleanup.{k}": v for k, v in getattr(self.cleaner, "last_timings", {}).items()}
         )
-        for k, v in timings.items():
-            result.timings[k] = result.timings.get(k, 0.0) + v
+        result.timings.update(timings)
         log.info("Cleanup | %s", " ".join(f"{k}={v * 1000:.0f}ms" for k, v in timings.items()))
         log.debug("raw=%r clean=%r", raw, text)
         if not text:

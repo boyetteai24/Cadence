@@ -77,7 +77,7 @@ Claude cleanup is **on by default** (as soon as your API key is set, see below).
 `settings.toml`: the part in `[brackets]`, a dot, then the setting name.
 
 ```powershell
-.\.venv\Scripts\python.exe -m cadence -v --set stt.lag_words=3
+.\.venv\Scripts\python.exe -m cadence -v --set stt.beam_size=1
 ```
 
 **Several at once:**
@@ -91,8 +91,6 @@ Some useful ones:
 | Option | What it does |
 |---|---|
 | `--llm claude` / `--llm none` / `--llm local` | AI cleanup: Claude, off, or a model on your PC |
-| `--set stt.lag_words=3` | Text follows your voice more closely (default 5) |
-| `--set output.live_insert=true` | Text appears while you talk (when you tap or click), instead of all at the end |
 | `--set stt.beam_size=1` | Slightly faster transcription, slightly more mistakes |
 | `--set output.restore_clipboard=true` | Put back what you had copied, instead of leaving the dictation on the clipboard |
 | `--set hotkey.mode=hold` | Push-to-talk only (no tapping) |
@@ -246,4 +244,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.7.0 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.8.0 starting`.

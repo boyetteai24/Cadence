@@ -53,18 +53,11 @@ class SttConfig:
     language: str | None = "en"  # None = auto-detect (slightly slower)
     beam_size: int = 5  # 5 = more accurate; 1 = greedy (fastest)
     vad_filter: bool = True  # skip silent stretches; also curbs hallucinations
-    # Transcribe while you talk, so little is left to do when you stop:
-    # "pauses": each phrase at the next pause (whole phrases: most accurate).
-    # "words":  each word once it's `lag_words` words behind you, and at every pause.
-    #           (With live typing and an LLM on, "pauses" is used: the LLM needs phrases.)
-    # "off":    everything after you stop.
-    # Unless output.live_insert is on, nothing is typed until you stop, and then the whole
-    # dictation is cleaned up in one go.
-    live_mode: str = "pauses"
-    lag_words: int = 5  # how far behind your voice the typing stays in "words" mode
-    pass_interval: float = 0.4  # seconds between re-transcription passes in "words" mode
+    # Transcribe each phrase in the background during your pauses while you talk, so when
+    # you stop only the last phrase is left. False: transcribe everything after you stop.
+    background: bool = True
     pause_seconds: float = 0.6  # how long a pause ends a phrase
-    min_chunk_seconds: float = 2.0  # "pauses" mode: don't split off phrases shorter than this
+    min_chunk_seconds: float = 2.0  # don't split off phrases shorter than this
 
 
 @dataclass
@@ -92,10 +85,6 @@ class OutputConfig:
     restore_clipboard: bool = False
     paste_delay_ms: int = 400  # wait before restoring the clipboard (runs in background)
     trailing_space: bool = True  # so consecutive dictations don't run together
-    # False (default): nothing is typed until you stop, then the whole dictation is cleaned
-    # up and pasted at once (best cleanup). True: when hands-free (tap or click), type each
-    # part as soon as it's ready, while you keep talking. Holding the hotkey always waits.
-    live_insert: bool = False
 
 
 @dataclass
@@ -205,7 +194,7 @@ def apply_overrides(cfg: Config, overrides: list[str]) -> list[str]:
         ):
             raise ValueError(
                 f"Unknown setting {item!r}. Use section.name=value with the names from "
-                f"settings.toml, e.g. cleanup.llm=claude or stt.lag_words=3"
+                f"settings.toml, e.g. cleanup.llm=claude or stt.beam_size=1"
             )
         value = _parse_value(raw.strip())
         current = getattr(section, name)
@@ -240,8 +229,6 @@ def load_config(path: Path | None = None) -> Config:
 def validate(cfg: Config) -> None:
     if cfg.hotkey.mode not in ("tap_or_hold", "hold", "toggle"):
         raise ValueError("hotkey.mode must be 'tap_or_hold', 'hold' or 'toggle'")
-    if cfg.stt.live_mode not in ("words", "pauses", "off"):
-        raise ValueError("stt.live_mode must be 'words', 'pauses' or 'off'")
     if cfg.cleanup.llm not in ("none", "local", "claude"):
         raise ValueError("cleanup.llm must be 'none', 'local' or 'claude'")
     if cfg.output.method not in ("paste", "type"):

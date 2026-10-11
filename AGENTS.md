@@ -54,7 +54,6 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/cadence/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
 | `src/cadence/audio.py` | Microphone capture; `read()` exposes audio while still recording |
 | `src/cadence/segmenter.py` | Energy-based pause detection: phrase cut points, trailing silence |
-| `src/cadence/streaming.py` | Local-agreement word commit logic for live word-by-word typing |
 | `src/cadence/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
 | `src/cadence/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
 | `src/cadence/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
@@ -69,25 +68,19 @@ Input: the hotkey (`hotkey_down`/`hotkey_up`, modes `tap_or_hold` (default), `ho
 and the overlay's mic button (`click`) drive the same `Dictation` methods; Esc calls `cancel`.
 A tap shorter than `TAP_SECONDS` latches hands-free recording until the next press or click.
 
-Background transcription (`stt.live_mode`) runs a thread per recording that hands parts of
-the audio to the worker as non-final `Job`s of the current `Utterance`, advancing
-`Dictation._cut`:
-- `"pauses"` (default, `segmenter.py`): at each pause after `min_chunk_seconds`, the phrase is
-  queued as audio and transcribed by the worker. Whole phrases keep accuracy high.
-- `"words"` (`streaming.py`): every `pass_interval` the not-yet-committed audio is
-  re-transcribed with word timestamps. Words `lag_words` behind the newest word and identical
-  in two consecutive passes are committed as an already-transcribed `Job(text=...)`; at a
-  pause everything is. Falls back to `"pauses"` when typing live with `cleanup.llm` on.
-Each part is transcribed with the utterance's earlier text as Whisper context, and its raw
-text is added to `Utterance.pending`. Pending text is cleaned (rules + LLM) and typed:
-- by default (`output.live_insert = false`), only at the final job, so the whole dictation
-  is cleaned in one pass (repeats and corrections spanning a pause get fixed, the LLM sees
-  everything), like Wispr Flow;
-- with `live_insert = true` and a hands-free utterance (tap/click), as each part arrives,
-  cleaned with `continuation=True` when it continues an unfinished sentence.
-The final job covers all audio after the last cut. Never inject keystrokes while the user
-holds the hotkey. With `restore_clipboard = false` (default) the whole dictation is left on
-the clipboard (`Injector.remember`), so text that missed a text box can be pasted.
+Nothing is typed while the user is talking; the whole dictation is typed once, when they
+stop (owner's decision: no live typing).
+
+Background transcription (`stt.background`, `segmenter.py`): while recording, a thread polls
+`Recorder.read()` and, at each pause (`pause_seconds`) after at least `min_chunk_seconds`,
+queues the finished phrase as a non-final `Job` of the current `Utterance`, advancing
+`Dictation._cut`. The worker transcribes it with the utterance's earlier text as Whisper
+context and adds the raw text to `Utterance.pending`. The final job covers all audio after
+the last cut; then all pending text is cleaned in one pass (rules + LLM), so repeats and
+corrections that span a pause get fixed and the LLM sees everything, and typed once. This
+keeps the wait after the user stops to roughly the last phrase. With
+`restore_clipboard = false` (default) the dictation stays on the clipboard, so text that
+missed a text box can be pasted.
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.
@@ -110,7 +103,7 @@ earlier ones are still processing; results are inserted in order.
   forbid answering it; `accept_output()` rejects chatty, empty, or length-drifting results.
 - **Latency budget** (target, on an RTX-class GPU, 10 s utterance): STT < 400 ms, rules < 5 ms,
   local LLM < 600 ms, Claude Haiku < 1 s, insert < 150 ms. The number users feel is logged as
-  "text appeared N ms after you stopped" (`after_stop`); with pause splitting it should stay
+  "text appeared N ms after you stopped" (`after_stop`); with background transcription it should stay
   under ~500 ms regardless of dictation length. Log timings for every dictation
   (`cadence -v` / `cadence.log`) and record benchmarks in `ROADMAP.md`.
 - **Privacy.** Without `ANTHROPIC_API_KEY` set, the default config must make no network calls
