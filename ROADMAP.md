@@ -46,10 +46,6 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       right-drag shows four snap spots (middle of each screen edge, on the monitor you're on)
       and snaps when dropped near one, otherwise stays where dropped; snapped edge remembered
       and re-centred if the screen size changes
-- [x] Clean, light-blue overlay (v0.11.0): drawn with Pillow (anti-aliased, see-through
-      glass via per-pixel-alpha layered windows instead of Tk shapes with a transparent key
-      color); Cadence is DPI-aware, so it's sharp on scaled displays, and the overlay and
-      feedback window scale with the display
 - [x] `settings.toml` tracked on GitHub (owner's choice): edited on GitHub, then `git pull`;
       tray "Edit settings on GitHub"; a mistake in it stops Cadence with a clear message
 - [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
@@ -86,9 +82,8 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - **Windows tests (2026-10-10):** transcription and overlay work on CUDA. The paste went to
   `SearchHost.exe`: releasing Ctrl+Win opened Start/Search, which stole focus (the Start-menu
   mask key was injected from inside the hook callback, too early). Fixed as above; needs re-test.
-- The layered-window drawing (UpdateLayeredWindow) and DPI awareness were checked under a
-  virtual X display only (which has no per-pixel transparency); they need a Windows test.
-  Clicks on the button are caught by Tk and, as a fallback, by polling the mouse buttons.
+- The hover bar and snap outlines were checked under a virtual X display, not yet on Windows
+  (hover detection there polls the cursor position, like the drag).
 - Clipboard restore only preserves text; images/files on the clipboard are left replaced by the
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Cadence (Windows UIPI).

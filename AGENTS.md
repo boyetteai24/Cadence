@@ -60,8 +60,7 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/cadence/output.py` | `PasteInjector`, `TypeInjector` |
 | `src/cadence/tray.py` | pystray icon (state colors, menu) |
 | `src/cadence/overlay.py` | Unfocusable idle bar that becomes a mic button on hover (left-click dictates, right-drag moves, snaps to the middle of any screen edge) + status pill (Tk thread): listening + mic meter, transcribing, errors; position and snapped edge saved in `overlay.json` |
-| `src/cadence/overlay_render.py` | Pure Pillow drawing for the overlay (4x supersampled, per-pixel alpha, light-blue glass theme) and `Layout` geometry at the display scale; Windows shows frames via `UpdateLayeredWindow` |
-| `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search, DPI awareness (system-aware, set at startup so the overlay is crisp at 125 %/150 %) |
+| `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
 | `src/cadence/feedback.py` | `FeedbackStore` (every review, JSON lines in the private settings folder, never in the repo), lessons for the LLM prompt, review dump |
 | `src/cadence/feedback_window.py` | Tk feedback window (heard / typed / corrected / notes); takes focus, unlike the overlay |
 | `src/cadence/sounds.py` | Start/stop/error beeps |

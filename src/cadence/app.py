@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import queue
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -346,10 +345,6 @@ def run(cfg: Config) -> None:
     from cadence import __version__
 
     log.info("Cadence %s starting", __version__)
-    if sys.platform == "win32":
-        from cadence.win32 import enable_dpi_awareness
-
-        enable_dpi_awareness()  # crisp overlay on scaled displays; before any window exists
     from cadence.audio import Recorder
     from cadence.cleanup import build_cleaner
     from cadence.hotkey import GlobalHotkeyListener
