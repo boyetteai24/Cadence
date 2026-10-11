@@ -11,6 +11,7 @@ import json
 import logging
 import re
 import urllib.request
+from typing import Callable
 
 log = logging.getLogger(__name__)
 
@@ -87,9 +88,25 @@ class LlmCleaner:
 
     name = "llm"
 
-    def __init__(self, chunk_words: int = 600, vocabulary: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        chunk_words: int = 600,
+        vocabulary: list[str] | None = None,
+        extra_instructions: Callable[[], str] | None = None,
+    ) -> None:
+        # Called for every request: e.g. the user's recent feedback (feedback.py).
+        self.extra_instructions = extra_instructions
         self.chunk_words = chunk_words
         self.vocabulary = vocabulary or []
+
+    def system_prompt(self) -> str:
+        extra = ""
+        if self.extra_instructions:
+            try:
+                extra = self.extra_instructions()
+            except Exception:
+                log.warning("Could not load feedback for the AI cleanup", exc_info=True)
+        return SYSTEM_PROMPT + extra
 
     def _complete(self, user_message: str, max_tokens: int) -> str:
         raise NotImplementedError
@@ -121,7 +138,7 @@ class LocalLlmCleaner(LlmCleaner):
         body = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": self.system_prompt()},
                 {"role": "user", "content": user_message},
             ],
             "temperature": 0,
@@ -168,7 +185,7 @@ class ClaudeCleaner(LlmCleaner):
             max_tokens=max_tokens,
             # Cleanup is a simple rewrite; skip thinking to keep latency low.
             thinking={"type": "disabled"},
-            system=SYSTEM_PROMPT,
+            system=self.system_prompt(),
             messages=[{"role": "user", "content": user_message}],
         )
         if response.stop_reason == "refusal":

@@ -60,6 +60,32 @@ Any one of these:
 
 ---
 
+## Give feedback on a dictation
+
+Right after a dictation, the pill at the bottom of the screen says **"Pasted · Feedback"**
+for a few seconds. Click it, or press **Ctrl+Alt+F** at any time (or use tray icon →
+**Give feedback on last dictation**). A window opens showing:
+
+- what you said (as Cadence heard it) and what was typed;
+- a box with the typed text, so you can fix it to **what it should have said**;
+- a **Notes** box for what went wrong.
+
+Both boxes are optional. **Ctrl+Enter** saves, **Esc** closes. Every review is kept in a
+private file on your PC (never on GitHub), and your 20 most recent ones are sent to Claude
+with each dictation, so it picks up your preferences straight away.
+
+**Send your feedback to Claude Code** so it can be built into Cadence permanently. This
+copies your recent reviews to the clipboard; then paste them into the chat:
+
+```powershell
+.\.venv\Scripts\python.exe -m cadence feedback --copy
+```
+
+(Add `--all` to copy every review instead of the last 30. Without `--copy`, they're printed in
+the window.)
+
+---
+
 ## Use a different setting for one run only
 
 Add options after `-m cadence`. `settings.toml` is **not** changed. The next normal start
@@ -244,4 +270,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.8.0 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.9.0 starting`.

@@ -61,6 +61,8 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/cadence/tray.py` | pystray icon (state colors, menu) |
 | `src/cadence/overlay.py` | Unfocusable mic button (left-click dictates, right-drag moves) + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
 | `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
+| `src/cadence/feedback.py` | `FeedbackStore` (every review, JSON lines in the private settings folder, never in the repo), lessons for the LLM prompt, review dump |
+| `src/cadence/feedback_window.py` | Tk feedback window (heard / typed / corrected / notes); takes focus, unlike the overlay |
 | `src/cadence/sounds.py` | Start/stop/error beeps |
 | `src/cadence/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
 
@@ -81,6 +83,16 @@ corrections that span a pause get fixed and the LLM sees everything, and typed o
 keeps the wait after the user stops to roughly the last phrase. With
 `restore_clipboard = false` (default) the dictation stays on the clipboard, so text that
 missed a text box can be pasted.
+
+Feedback: after each paste, `Dictation.result_listeners` fire; the overlay shows "Pasted ·
+Feedback" for `feedback.prompt_seconds`. Clicking it, the `feedback.hotkey` (second
+`GlobalHotkeyListener`) or the tray item opens `FeedbackWindow` on the overlay's Tk thread
+(`Overlay.request_feedback` is thread-safe). Saved reviews go to `FeedbackStore`. With
+`feedback.teach_ai`, `build_cleaner` gives the LLM cleaner an `extra_instructions` callable
+that re-reads the last `teach_count` reviews on every request and appends them to the system
+prompt (`feedback.lessons_for_prompt`). `cadence feedback --copy` exports reviews for the
+owner to paste into a session; turn recurring problems into rules, tests, dictionary words or
+prompt changes, and log them in ROADMAP's feedback log.
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.

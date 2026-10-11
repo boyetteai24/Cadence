@@ -32,6 +32,7 @@ class Result:
     audio_seconds: float = 0.0
     timings: dict[str, float] = field(default_factory=dict)
     skipped: str | None = None  # reason, if nothing was inserted
+    cleanup: str = ""  # which cleanup produced `text`: the LLM's name, or "rules"
 
 
 @dataclass
@@ -74,6 +75,7 @@ class Dictation:
         self.last_result: Result | None = None
         self.listeners: list[Callable[[str], None]] = []
         self.error_listeners: list[Callable[[str], None]] = []
+        self.result_listeners: list[Callable[[Result], None]] = []  # after each paste
         self._jobs: queue.Queue[Job | None] = queue.Queue()
         self._pending = 0
         self._lock = threading.Lock()
@@ -277,6 +279,11 @@ class Dictation:
         u.result.timings["insert"] = time.perf_counter() - t0
         u.result.text = text
         u.result.skipped = None
+        for fn in self.result_listeners:
+            try:
+                fn(u.result)
+            except Exception:
+                log.exception("Result listener failed")
         if u.stopped_at is not None:
             # The latency the user feels: from finishing speaking to text appearing.
             u.result.timings["after_stop"] = time.perf_counter() - u.stopped_at
@@ -320,6 +327,9 @@ class Dictation:
             {f"cleanup.{k}": v for k, v in getattr(self.cleaner, "last_timings", {}).items()}
         )
         result.timings.update(timings)
+        llm = getattr(self.cleaner, "llm", None)
+        used_llm = llm is not None and getattr(self.cleaner, "last_llm_status", "") == "used"
+        result.cleanup = llm.name if used_llm else "rules"
         log.info("Cleanup | %s", " ".join(f"{k}={v * 1000:.0f}ms" for k, v in timings.items()))
         log.debug("raw=%r clean=%r", raw, text)
         if not text:
@@ -365,17 +375,32 @@ def run(cfg: Config) -> None:
         on_escape=dictation.cancel,
     )
 
+    from cadence.feedback import FeedbackStore
+
+    feedback_store = FeedbackStore()
+    overlay = None
     if cfg.ui.overlay:
         from cadence.overlay import Overlay
 
-        Overlay(dictation, cfg.hotkey.combo, show_button=cfg.ui.button).start()
+        overlay = Overlay(
+            dictation, cfg.hotkey.combo, show_button=cfg.ui.button,
+            feedback_hotkey=cfg.feedback.hotkey, prompt_seconds=cfg.feedback.prompt_seconds,
+            save_feedback=feedback_store.add,
+        )
+        overlay.start()
+    open_feedback = overlay.request_feedback if overlay else None
+
+    # A second shortcut that opens the feedback window for the last dictation.
+    feedback_listener = None
+    if open_feedback and cfg.feedback.hotkey:
+        feedback_listener = GlobalHotkeyListener(cfg.feedback.hotkey, open_feedback, lambda: None)
 
     tray = None
     if cfg.ui.tray:
         try:
             from cadence.tray import Tray
 
-            tray = Tray(dictation, cfg)
+            tray = Tray(dictation, cfg, open_feedback=open_feedback)
         except ImportError:
             log.warning("pystray/Pillow not installed; running without a tray icon")
 
@@ -387,6 +412,8 @@ def run(cfg: Config) -> None:
             dictation._error(f"Failed to load speech model: {e}")
             return
         listener.start()
+        if feedback_listener:
+            feedback_listener.start()
         log.info("Ready. Hotkey %s (%s mode), or click the mic button. Esc cancels.", cfg.hotkey.combo, cfg.hotkey.mode)
 
     if tray is not None:
@@ -404,4 +431,6 @@ def run(cfg: Config) -> None:
     if tray is not None:
         tray.stop()
     listener.stop()
+    if feedback_listener:
+        feedback_listener.stop()
     dictation.shutdown()

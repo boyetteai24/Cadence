@@ -114,6 +114,19 @@ min_seconds = 0.3         # shorter recordings are treated as accidental taps
 
 
 # ---------------------------------------------------------------------------
+#  Feedback (teach Cadence what it got wrong)
+# ---------------------------------------------------------------------------
+[feedback]
+# After a dictation, open the feedback window to see what you said and what was typed,
+# write what it should have said and/or a note, and save. Every review is kept in a private
+# file on your PC (never on GitHub): see it with `python -m cadence feedback`.
+hotkey = "ctrl+alt+f"     # opens feedback for the last dictation ("" = no shortcut)
+prompt_seconds = 4.0      # how long "Pasted · Feedback" shows after a dictation (0 = never)
+teach_ai = true           # send your recent reviews to the AI cleanup so it learns right away
+teach_count = 20          # how many recent reviews to send (a little more text per request)
+
+
+# ---------------------------------------------------------------------------
 #  Your words
 # ---------------------------------------------------------------------------
 [dictionary]

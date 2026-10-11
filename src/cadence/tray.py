@@ -50,9 +50,10 @@ def _open_path(path) -> None:
 
 
 class Tray:
-    def __init__(self, dictation: Dictation, cfg: Config) -> None:
+    def __init__(self, dictation: Dictation, cfg: Config, open_feedback=None) -> None:
         self.dictation = dictation
         self.cfg = cfg
+        self.open_feedback = open_feedback
         self._images = {state: _icon_image(c) for state, c in _COLORS.items()}
         self.icon = pystray.Icon("Cadence", self._images[LOADING], "Cadence", menu=self._menu())
         self.stopped = threading.Event()
@@ -73,6 +74,11 @@ class Tray:
             pystray.MenuItem(f"Hotkey: {self.cfg.hotkey.combo} ({self.cfg.hotkey.mode})", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Copy last dictation", self._copy_last),
+            pystray.MenuItem(
+                "Give feedback on last dictation",
+                lambda: self.open_feedback and self.open_feedback(),
+                visible=self.open_feedback is not None,
+            ),
             pystray.MenuItem(
                 "AI cleanup",
                 pystray.Menu(

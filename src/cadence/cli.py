@@ -4,6 +4,7 @@
     cadence transcribe FILE     transcribe + clean an audio file, with timings
     cadence clean "TEXT"        run only the cleanup stage on some text
     cadence devices             list microphones
+    cadence feedback            print your saved feedback, to paste into a chat
     cadence init-config         write the default settings.toml
     cadence autostart on|off    start Cadence when you sign in to Windows
 
@@ -130,6 +131,29 @@ def describe_llm(cfg: Config, chain) -> str:
     return f"[AI cleanup: {llm} {status}; showing built-in rules output]"
 
 
+def cmd_feedback(cfg: Config, args) -> int:
+    from cadence.feedback import FeedbackStore, format_for_review
+
+    store = FeedbackStore()
+    reviews = store.all()
+    shown = reviews if args.all else reviews[-args.last:]
+    text = format_for_review(shown)
+    if args.copy:
+        import pyperclip
+
+        pyperclip.copy(text)
+        print(f"Copied {len(shown)} of {len(reviews)} reviews to the clipboard. "
+              "Paste them into the chat with Ctrl+V.")
+        return 0
+    # Dictations can contain characters the console can't show; never crash over that.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")
+    print(text)
+    print(f"\n[{len(shown)} of {len(reviews)} reviews shown, saved in {store.path}]",
+          file=sys.stderr)
+    return 0
+
+
 def cmd_devices(cfg: Config, args) -> int:
     from cadence.audio import list_input_devices
 
@@ -198,6 +222,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("text")
     p.add_argument("--no-llm", action="store_true")
     sub.add_parser("devices", help="list input devices")
+    p = sub.add_parser("feedback", help="print your saved feedback, to paste into a chat")
+    p.add_argument("--last", type=int, default=30, help="how many recent reviews (default 30)")
+    p.add_argument("--all", action="store_true", help="print every review")
+    p.add_argument("--copy", action="store_true", help="copy to the clipboard instead of printing")
     p = sub.add_parser("init-config", help="write the default settings.toml")
     p.add_argument("--force", action="store_true")
     p = sub.add_parser("autostart", help="start with Windows")
@@ -226,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
         "transcribe": cmd_transcribe,
         "clean": cmd_clean,
         "devices": cmd_devices,
+        "feedback": cmd_feedback,
         "init-config": cmd_init_config,
         "autostart": cmd_autostart,
     }
