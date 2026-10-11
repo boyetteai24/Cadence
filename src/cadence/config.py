@@ -96,6 +96,19 @@ class UiConfig:
 
 
 @dataclass
+class FeedbackConfig:
+    # Shortcut that opens the feedback window for the last dictation ("" = no shortcut).
+    hotkey: str = "ctrl+alt+f"
+    # After each dictation the pill shows "Pasted · Feedback" for this many seconds
+    # (click it to open the feedback window). 0 = don't show it.
+    prompt_seconds: float = 4.0
+    # Send your most recent corrections and notes to the AI cleanup with every dictation,
+    # so it learns your preferences right away. All feedback is kept on your PC either way.
+    teach_ai: bool = True
+    teach_count: int = 20  # how many recent reviews to send
+
+
+@dataclass
 class DictionaryConfig:
     # Words/names Whisper should prefer (passed as an initial prompt).
     words: list[str] = field(default_factory=list)
@@ -111,6 +124,7 @@ class Config:
     cleanup: CleanupConfig = field(default_factory=CleanupConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     ui: UiConfig = field(default_factory=UiConfig)
+    feedback: FeedbackConfig = field(default_factory=FeedbackConfig)
     dictionary: DictionaryConfig = field(default_factory=DictionaryConfig)
 
 

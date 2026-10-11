@@ -305,3 +305,16 @@ def test_llm_sees_the_whole_dictation_once():
     d.click()
     wait_idle(d)
     assert llm.seen == ["One two three. Four five six. Seven."]
+
+
+def test_result_listeners_get_each_pasted_dictation_with_its_cleanup():
+    d, injector = make(text="um hello there")
+    seen = []
+    d.result_listeners.append(seen.append)
+    d.load()
+    d.click()
+    d.click()
+    wait_idle(d)
+    assert len(seen) == 1
+    assert seen[0].raw == "um hello there" and seen[0].text == "Hello there "
+    assert seen[0].cleanup == "rules"

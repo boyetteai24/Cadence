@@ -46,10 +46,25 @@ class CleanupChain:
         return polished or text
 
 
+def _feedback_lessons(cfg: Config):
+    """Recent feedback as extra LLM instructions, re-read on every request so a review
+    saved a moment ago applies to the very next dictation."""
+    if not cfg.feedback.teach_ai or cfg.feedback.teach_count <= 0:
+        return None
+    from cadence.feedback import FeedbackStore, lessons_for_prompt
+
+    store = FeedbackStore()
+    return lambda: lessons_for_prompt(store.recent(cfg.feedback.teach_count))
+
+
 def build_cleaner(cfg: Config) -> CleanupChain:
     c = cfg.cleanup
     rules = RuleCleaner(c.remove_fillers, c.voice_commands, cfg.dictionary.replacements)
-    common = {"chunk_words": c.chunk_words, "vocabulary": cfg.dictionary.words}
+    common = {
+        "chunk_words": c.chunk_words,
+        "vocabulary": cfg.dictionary.words,
+        "extra_instructions": _feedback_lessons(cfg),
+    }
     llm: Cleaner | None = None
     if c.llm == "local":
         from cadence.cleanup.llm import LocalLlmCleaner

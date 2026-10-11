@@ -17,8 +17,10 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
+from typing import Callable
 
 from cadence.app import IDLE, LOADING, PROCESSING, RECORDING
+from cadence.feedback import Review
 
 log = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ RED = "#ef4444"
 AMBER = "#f59e0b"
 BLUE = "#60a5fa"
 READY_SECONDS = 2.5
+NOTICE_SECONDS = 2.0
 ERROR_SECONDS = 4.0
 
 
@@ -71,19 +74,44 @@ def _on_screen(root, x: int, y: int) -> bool:
     return 0 <= cx < root.winfo_screenwidth() and 0 <= cy < root.winfo_screenheight()
 
 
+def _pretty(combo: str) -> str:
+    return combo.replace("+", " + ").title() if combo else ""
+
+
+def _bring_to_front(win) -> None:
+    """Windows only lets the app the user last interacted with take the foreground. A
+    shortcut or a click on a no-activate window doesn't count, so tap Alt first (the usual
+    workaround) and then raise the feedback window so it can be typed in straight away."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    try:
+        win.update_idletasks()
+        hwnd = user32.GetParent(win.winfo_id()) or win.winfo_id()
+        user32.keybd_event(0x12, 0, 0, 0)  # Alt down
+        user32.keybd_event(0x12, 0, 2, 0)  # Alt up
+        user32.SetForegroundWindow(hwnd)
+    except Exception:
+        log.debug("Could not bring the feedback window to the front", exc_info=True)
+
+
 @dataclass
 class View:
-    kind: str  # "hidden" | "button" | "listening" | "working" | "message"
+    kind: str  # "hidden" | "button" | "listening" | "working" | "message" | "feedback_prompt"
     text: str = ""
     color: str = FG
 
 
 def compute_view(state: str, now: float, ready_at: float | None,
                  error: tuple[float, str] | None, hotkey: str,
-                 show_button: bool = True) -> View:
+                 show_button: bool = True, pasted_at: float | None = None,
+                 prompt_seconds: float = 0.0, notice: tuple[float, str] | None = None,
+                 feedback_hotkey: str = "") -> View:
     """What the pill should display right now (pure, so it's unit-testable)."""
     if error and now - error[0] < ERROR_SECONDS:
         return View("message", error[1], AMBER)
+    if notice and now - notice[0] < NOTICE_SECONDS:
+        return View("message", notice[1], FG)
     if state == RECORDING:
         return View("listening", "Listening", RED)
     if state == PROCESSING:
@@ -92,22 +120,35 @@ def compute_view(state: str, now: float, ready_at: float | None,
         return View("message", "Cadence is loading…", FG)
     if state == IDLE and ready_at is not None and now - ready_at < READY_SECONDS:
         return View("message", f"Cadence ready · {hotkey} or click", FG)
+    if state == IDLE and pasted_at is not None and now - pasted_at < prompt_seconds:
+        hint = f" · {feedback_hotkey}" if feedback_hotkey else ""
+        return View("feedback_prompt", f"Pasted · Feedback{hint}", FG)
     if state == IDLE and show_button:
         return View("button")
     return View("hidden")
 
 
 class Overlay:
-    def __init__(self, dictation, hotkey: str, show_button: bool = True) -> None:
+    def __init__(self, dictation, hotkey: str, show_button: bool = True,
+                 feedback_hotkey: str = "", prompt_seconds: float = 0.0,
+                 save_feedback: Callable[[Review], None] | None = None) -> None:
         self.dictation = dictation
         self.show_button = show_button
+        self.feedback_hotkey = _pretty(feedback_hotkey)
+        self.prompt_seconds = prompt_seconds if save_feedback else 0.0
+        self.save_feedback = save_feedback
+        self.pasted_at: float | None = None
+        self.notice: tuple[float, str] | None = None
+        self._feedback_requested = False
+        self._feedback_window = None
         self.view = View("hidden")
-        self.hotkey = hotkey.replace("+", " + ").title()
+        self.hotkey = _pretty(hotkey)
         self.ready_at: float | None = None
         self.error: tuple[float, str] | None = None
         self.levels: collections.deque[float] = collections.deque([0.0] * 18, maxlen=18)
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
+        dictation.result_listeners.append(self._on_result)
         self._thread = threading.Thread(target=self._run, name="cadence-overlay", daemon=True)
 
     def start(self) -> None:
@@ -116,6 +157,14 @@ class Overlay:
     def _on_state(self, state: str) -> None:
         if state == IDLE and self.ready_at is None:
             self.ready_at = time.monotonic()
+
+    def _on_result(self, result) -> None:
+        self.pasted_at = time.monotonic()
+
+    def request_feedback(self) -> None:
+        """Open the feedback window for the last dictation. Safe from any thread."""
+        if self.save_feedback:
+            self._feedback_requested = True
 
     def _on_error(self, message: str) -> None:
         short = message if len(message) <= 40 else message[:39] + "…"
@@ -227,8 +276,14 @@ class Overlay:
         try:
             recorder = self.dictation.recorder
             self.levels.append(getattr(recorder, "level", 0.0))
-            self.view = compute_view(self.dictation.state, time.monotonic(), self.ready_at,
-                                     self.error, self.hotkey, self.show_button)
+            if self._feedback_requested:
+                self._feedback_requested = False
+                self._open_feedback()
+            self.view = compute_view(
+                self.dictation.state, time.monotonic(), self.ready_at, self.error, self.hotkey,
+                self.show_button, self.pasted_at, self.prompt_seconds, self.notice,
+                self.feedback_hotkey,
+            )
             self._draw(self.view)
         except Exception:
             log.debug("Overlay tick failed", exc_info=True)
@@ -278,9 +333,36 @@ class Overlay:
             save_position(x, y)
             log.debug("Mic button moved to %d,%d", x, y)
             return
-        if self.view.kind in ("button", "listening"):
+        if self.view.kind == "feedback_prompt":
+            self._open_feedback()
+        elif self.view.kind in ("button", "listening"):
             # Off the Tk thread: opening the microphone can take a moment.
             threading.Thread(target=self.dictation.click, daemon=True).start()
+
+    def _open_feedback(self) -> None:
+        """Tk thread only."""
+        result = self.dictation.last_result
+        if not result or not (result.raw or result.text):
+            self.notice = (time.monotonic(), "Nothing to give feedback on yet")
+            return
+        if self._feedback_window and self._feedback_window.exists():
+            self._feedback_window.close()
+        self.pasted_at = None  # the prompt has done its job
+        import tkinter as tk
+
+        from cadence.feedback_window import FeedbackWindow
+
+        x, y = self._window_pos()
+        self._feedback_window = FeedbackWindow(
+            tk, self.root, heard=result.raw, typed=result.text, cleanup=result.cleanup,
+            on_save=self._saved, near=(x + WIDTH // 2, y),
+        )
+        if self.hwnd:
+            _bring_to_front(self._feedback_window.win)
+
+    def _saved(self, review: Review) -> None:
+        self.save_feedback(review)
+        self.notice = (time.monotonic(), "Feedback saved · thanks!")
 
     def _cursor(self) -> tuple[int, int]:
         if self.hwnd:
@@ -347,6 +429,10 @@ class Overlay:
             self._show()
             return
         self._pill()
+        if view.kind == "feedback_prompt":
+            c.create_text(WIDTH // 2, 22, text=view.text, fill=BLUE, font=font)
+            self._show()
+            return
         if view.kind == "listening":
             pulse = 5 + 2 * (int(time.monotonic() * 3) % 2)
             c.create_oval(20 - pulse, 22 - pulse, 20 + pulse, 22 + pulse, fill=RED, outline=RED)

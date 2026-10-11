@@ -37,3 +37,20 @@ def test_button_position_is_remembered(tmp_path, monkeypatch):
     assert overlay.load_position() == (120, -40)
     (tmp_path / "overlay.json").write_text("garbage")
     assert overlay.load_position() is None
+
+
+def test_feedback_prompt_after_paste_then_back_to_button():
+    kw = dict(pasted_at=100.0, prompt_seconds=4.0, feedback_hotkey="Ctrl + Alt + F")
+    v = compute_view(IDLE, 101.0, None, None, "Ctrl + Win", **kw)
+    assert v.kind == "feedback_prompt" and v.text == "Pasted · Feedback · Ctrl + Alt + F"
+    assert compute_view(IDLE, 105.0, None, None, "Ctrl + Win", **kw).kind == "button"
+    assert compute_view(RECORDING, 101.0, None, None, "Ctrl + Win", **kw).kind == "listening"
+    off = dict(kw, prompt_seconds=0.0)
+    assert compute_view(IDLE, 101.0, None, None, "Ctrl + Win", **off).kind == "button"
+
+
+def test_notice_shows_briefly():
+    v = compute_view(IDLE, 101.0, None, None, "Ctrl + Win", notice=(100.0, "Feedback saved · thanks!"))
+    assert v.text == "Feedback saved · thanks!"
+    assert compute_view(IDLE, 103.0, None, None, "Ctrl + Win",
+                        notice=(100.0, "Feedback saved")).kind == "button"

@@ -63,6 +63,12 @@ back what you had copied before instead.)
 - **Formatting:** say "new line" or "new paragraph".
 - If text didn't land where you wanted it, use **tray → Copy last dictation**.
 
+**Feedback:** after a dictation, click **"Pasted · Feedback"** on the pill (or press
+**Ctrl+Alt+F**) to see what you said and what was typed, then write what it should have said
+and/or a note. Reviews are kept in a private file on your PC, and the 20 most recent are sent
+to the AI cleanup with every dictation so it learns your preferences right away. To share them
+for permanent fixes: `python -m cadence feedback --copy`, then paste into the chat.
+
 ## Settings
 
 All settings live in **`settings.toml`** in the main project folder, on GitHub, and every

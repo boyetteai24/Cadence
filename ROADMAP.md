@@ -38,6 +38,10 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - [x] Removed live typing (v0.8.0, owner's decision): word-by-word mode, `live_insert`,
       continuation cleanup and word timestamps are gone; text is always typed when you stop.
       Background transcription during pauses stays (`stt.background`) for a short wait
+- [x] Feedback (v0.9.0): "Pasted · Feedback" pill / Ctrl+Alt+F / tray open a window with what
+      was heard and typed; optional correction and notes; every review kept privately in
+      feedback.jsonl; the 20 most recent are sent to the AI cleanup on every request;
+      `cadence feedback --copy` exports them for review
 - [x] `settings.toml` tracked on GitHub (owner's choice): edited on GitHub, then `git pull`;
       tray "Edit settings on GitHub"; a mistake in it stops Cadence with a clear message
 - [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
