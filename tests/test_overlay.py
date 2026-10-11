@@ -1,16 +1,11 @@
 from cadence.app import IDLE, LOADING, PROCESSING, RECORDING
-from cadence.overlay import (
-    ERROR_SECONDS,
-    HEIGHT,
-    READY_SECONDS,
-    WIDTH,
-    button_center,
-    compute_view,
-    content_x,
-    is_hovering,
-    nearest_preset,
-    preset_positions,
-)
+from cadence.overlay import ERROR_SECONDS, READY_SECONDS, View, compute_view, frame_key
+from cadence.overlay_render import Layout, premultiplied_bgra, render, render_marker
+
+L = Layout()
+WIDTH, HEIGHT = L.width, L.height
+button_center, content_x, is_hovering = L.button_center, L.content_x, L.is_hovering
+nearest_preset, preset_positions = L.nearest_preset, L.preset_positions
 
 
 def view(state, now=100.0, ready_at=None, error=None):
@@ -115,3 +110,58 @@ def test_hover_only_near_the_bar():
     assert not is_hovering((cx, cy + 60), window, None)
     lx, ly = button_center(window, "left")
     assert is_hovering((lx, ly), window, "left") and not is_hovering((cx, cy), window, "left")
+
+
+def test_scaled_layout_grows_with_display_scaling():
+    big = Layout(1.5)
+    assert big.width == round(WIDTH * 1.5) and big.height == 66
+    assert big.button[0] > L.button[0]
+    spots = big.preset_positions(WORK)
+    assert big.button_center(spots["bottom"], "bottom")[0] == 960
+    assert spots["bottom"][1] + big.height <= 1032
+
+
+def test_on_button_is_the_drawn_button_only():
+    window = (100, 200)
+    cx, cy = button_center(window, None)
+    assert L.on_button((cx, cy), window, None)
+    assert not L.on_button((cx + L.button[0], cy), window, None)
+    assert is_hovering((cx + L.button[0] // 2 + 4, cy), window, None)  # hover is a bit wider
+
+
+def test_render_is_smooth_and_see_through():
+    for scale in (1.0, 1.5):
+        lay = Layout(scale)
+        for kind, text in [("bar", ""), ("button", ""), ("listening", "Listening"),
+                           ("working", "Transcribing"), ("message", "Cadence ready"),
+                           ("feedback_prompt", "Pasted · Feedback")]:
+            img = render(kind, text, "#f4f4f5", lay, "bottom", [0.1] * 18, now=1.0)
+            assert img.size == (lay.width, lay.height) and img.mode == "RGBA"
+            hist = img.getchannel("A").histogram()
+            alphas = {a for a, count in enumerate(hist) if count}
+            assert 0 in alphas  # transparent around it
+            assert any(0 < a < 255 for a in alphas)  # anti-aliased / see-through edges
+        assert render_marker(lay, "left", True).size == (lay.width, lay.height)
+
+
+def test_button_is_drawn_where_the_layout_says():
+    img = render("button", "", "", L, "left")
+    alpha = img.getchannel("A")
+    cy = L.height // 2
+    assert alpha.getpixel((L.content_x("left"), cy)) > 150
+    assert alpha.getpixel((L.width - 10, cy)) == 0
+
+
+def test_premultiplied_bgra():
+    from PIL import Image
+
+    img = Image.new("RGBA", (1, 1), (200, 100, 50, 128))
+    assert premultiplied_bgra(img) == bytes([25, 50, 100, 128])
+
+
+def test_frames_are_redrawn_only_when_something_changes():
+    bar = View("bar")
+    assert frame_key(bar, "bottom", [0.1], 1.0) == frame_key(bar, "bottom", [0.5], 9.0)
+    assert frame_key(bar, "bottom", [], 1.0) != frame_key(bar, "left", [], 1.0)
+    listening = View("listening", "Listening")
+    assert frame_key(listening, None, [0.1], 1.0) != frame_key(listening, None, [0.2], 1.0)

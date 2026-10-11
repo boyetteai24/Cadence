@@ -139,3 +139,20 @@ def dismiss_start_menu_if_open(timeout_s: float = 0.6) -> bool:
         if foreground_window()[0].lower() not in _SHELL_POPUPS:
             break
     return True
+
+
+def enable_dpi_awareness() -> None:
+    """Tell Windows Cadence draws at the real screen resolution. Without this, on a display
+    scaled to 125 % / 150 % Windows draws the overlay small and stretches it, which makes
+    it blurry and pixelated. Call before any window is created."""
+    try:
+        # DPI_AWARENESS_CONTEXT_SYSTEM_AWARE (Windows 10 1703+). System-aware rather than
+        # per-monitor, because Tk doesn't re-layout when a window moves between monitors.
+        if user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-2)):
+            return
+    except AttributeError:
+        pass
+    try:
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)  # PROCESS_SYSTEM_DPI_AWARE (8.1+)
+    except (AttributeError, OSError):
+        user32.SetProcessDPIAware()
