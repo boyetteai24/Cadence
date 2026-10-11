@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 
 from cadence.app import IDLE, LOADING, PROCESSING, RECORDING, Dictation
 from cadence.cleanup import build_cleaner
-from cadence.config import Config, default_config_path
+from cadence.config import Config, default_config_path, settings_edit_url
 
 log = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ class Tray:
                     llm_item("Claude Haiku", "claude"),
                 ),
             ),
-            pystray.MenuItem("Open settings", lambda: self._open_config()),
+            pystray.MenuItem("Edit settings on GitHub", lambda: self._open_config()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", lambda: self.stop()),
         )
@@ -110,6 +110,13 @@ class Tray:
         log.info("Cleanup LLM set to %s", value)
 
     def _open_config(self) -> None:
+        # Settings are edited on GitHub (then `git pull`); fall back to the local file.
+        url = settings_edit_url()
+        if url:
+            import webbrowser
+
+            webbrowser.open(url)
+            return
         path = default_config_path()
         if not path.exists():
             from cadence.cli import write_default_config

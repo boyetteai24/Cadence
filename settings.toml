@@ -1,0 +1,139 @@
+# ============================================================================
+#  Cadence settings
+# ============================================================================
+#  This file is on GitHub, and the repository is PUBLIC: anyone can read it.
+#  Never put passwords, API keys or personal details in it. (The Claude API key lives
+#  in the ANTHROPIC_API_KEY environment variable, never here.)
+#
+#  To change a setting: edit this file on GitHub (pencil icon), commit, then on your PC
+#  quit Cadence, run `git pull` in the Cadence folder, and start Cadence again.
+#  Delete a line to go back to its built-in default.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+#  Shortcut
+# ---------------------------------------------------------------------------
+[hotkey]
+# Keys joined by "+": ctrl, alt, shift, win (either side) or ctrl_r, alt_l, ...,
+# space, f1..f24, or a single letter. Examples: "ctrl+win", "ctrl_r", "f9".
+combo = "ctrl+win"
+
+# "tap_or_hold" = hold to talk, OR tap once to talk hands-free and tap again to stop.
+# "hold"        = push-to-talk only.
+# "toggle"      = press to start, press again to stop.
+# Esc always cancels.
+mode = "tap_or_hold"
+
+
+# ---------------------------------------------------------------------------
+#  AI cleanup (grammar polish after the built-in rules)
+# ---------------------------------------------------------------------------
+[cleanup]
+# "claude" = Claude Haiku polishes your text: removes "like"/"look"/"you know"-style fillers,
+#            fixes grammar and commas, merges repeats and restarts, applies corrections.
+#            Adds about half a second to a second, costs roughly a hundredth of a cent per
+#            dictation, and sends the text (never audio) to Anthropic. Only works when your
+#            API key is set (see below); without it Cadence quietly uses "none".
+# "none"   = built-in rules only: instant, free, fully offline.
+# "local"  = a model running on your PC (Ollama, LM Studio, llama.cpp). Free and private.
+# The AI sees your whole dictation at once (unless you turn on live typing below).
+llm = "claude"
+
+# Claude API key: never put it in this file. Cadence reads it only from the
+# ANTHROPIC_API_KEY environment variable, so it can't end up in a file you share or commit.
+# To set it once, run this in PowerShell (with your real key), then close and reopen
+# PowerShell before starting Cadence:
+#     setx ANTHROPIC_API_KEY "sk-ant-..."
+# To remove it later:  reg delete HKCU\Environment /v ANTHROPIC_API_KEY /f
+claude_model = "claude-haiku-5-5"
+
+# For llm = "local": any OpenAI-compatible server.
+# Ollama uses port 11434, LM Studio 1234, llama.cpp 8080.
+local_url = "http://localhost:11434/v1"
+local_model = "qwen2.5:3b-instruct"
+
+min_words_for_llm = 4     # shorter dictations skip the AI (it's not worth the wait)
+timeout_s = 10.0          # if the AI takes longer, the rules-only text is used
+chunk_words = 600         # very long dictations are sent to the AI in pieces this size
+
+remove_fillers = true     # drop "um", "uh", stutters and repeated words
+voice_commands = true     # say "new line" or "new paragraph"
+
+
+# ---------------------------------------------------------------------------
+#  When text appears, and speech recognition
+# ---------------------------------------------------------------------------
+[stt]
+# By default nothing is typed until you stop talking; then your whole dictation is cleaned up
+# and pasted at once (like Wispr Flow). To have text appear while you talk, set
+# live_insert = true under [output] further down.
+#
+# Either way, Cadence transcribes in the background while you talk, so there's little left
+# to do when you stop:
+#   "pauses" = transcribe each phrase when you pause (whole phrases: most accurate)
+#   "words"  = transcribe word by word, a few words behind you (faster, a bit less accurate)
+#   "off"    = transcribe everything after you stop (slowest for long dictations)
+live_mode = "pauses"
+pause_seconds = 0.6       # a pause this long counts as the end of a phrase
+min_chunk_seconds = 2.0   # "pauses": shortest phrase transcribed on its own
+lag_words = 5             # "words": how many words behind your voice it stays
+pass_interval = 0.4       # "words": seconds between re-checks (lower = more GPU work)
+
+# Speech recognition
+model = "large-v3-turbo"  # or "distil-large-v3" (faster), "small.en" (weak GPU/CPU)
+device = "auto"           # auto | cuda | cpu
+compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
+language = "en"           # "" = detect automatically (slightly slower)
+beam_size = 5             # 5 = more accurate; 1 = a bit faster, more mistakes
+vad_filter = true         # skip silence (also prevents made-up words)
+
+
+# ---------------------------------------------------------------------------
+#  How text is typed
+# ---------------------------------------------------------------------------
+[output]
+# false = type nothing until you stop, then paste the whole cleaned-up dictation (best cleanup).
+# true  = when you tap or click (hands-free), type text while you're still talking.
+#         (Holding the shortcut always waits until you let go.) Corrections and the AI can't
+#         change text that's already been typed.
+live_insert = false
+method = "paste"          # "paste" (recommended) or "type" (types key by key)
+paste_keys = "ctrl+v"     # some terminals need "ctrl+shift+v"
+# false = your dictation stays on the clipboard, so if it didn't land in a text box
+#         (cursor wasn't in one), just click where you want it and press Ctrl+V.
+# true  = put back whatever you had copied before.
+restore_clipboard = false
+paste_delay_ms = 400      # wait before restoring the clipboard (doesn't slow typing)
+trailing_space = true     # add a space so the next dictation doesn't run on
+
+
+# ---------------------------------------------------------------------------
+#  On-screen
+# ---------------------------------------------------------------------------
+[ui]
+button = true             # mic button: left-click to dictate, right-click + drag to move
+overlay = true            # "Listening" / "Transcribing" pill (the button needs this on)
+tray = true               # icon by the clock, with a menu
+sounds = true             # beeps when listening starts and stops
+
+
+# ---------------------------------------------------------------------------
+#  Microphone
+# ---------------------------------------------------------------------------
+[audio]
+# device = 1              # a number from `python -m cadence devices`; omit = Windows default
+keep_stream_open = false  # true = starts a little faster, but Windows shows the mic as in use
+min_seconds = 0.3         # shorter recordings are treated as accidental taps
+
+
+# ---------------------------------------------------------------------------
+#  Your words
+# ---------------------------------------------------------------------------
+[dictionary]
+# Names and jargon to spell correctly, e.g. ["Cadence", "Kubernetes", "Anthropic"]
+words = []
+
+# Replace a spoken phrase with something else (case-insensitive, whole words):
+[dictionary.replacements]
+# "my email" = "me@example.com"

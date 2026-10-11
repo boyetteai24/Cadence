@@ -1,9 +1,13 @@
 # ============================================================================
 #  Cadence settings
 # ============================================================================
-#  Edit this file, save it, then restart Cadence (tray icon > Quit, then start it again).
-#  This file is yours: git ignores it, so `git pull` never overwrites your changes.
-#  Delete a line to go back to its default. Delete the whole file to start fresh.
+#  This file is on GitHub, and the repository is PUBLIC: anyone can read it.
+#  Never put passwords, API keys or personal details in it. (The Claude API key lives
+#  in the ANTHROPIC_API_KEY environment variable, never here.)
+#
+#  To change a setting: edit this file on GitHub (pencil icon), commit, then on your PC
+#  quit Cadence, run `git pull` in the Cadence folder, and start Cadence again.
+#  Delete a line to go back to its built-in default.
 # ============================================================================
 
 

@@ -11,6 +11,3 @@ dist/
 # Secrets: never commit
 .env
 .env.*
-
-# Your personal settings (created on first run from src/cadence/default_config.toml)
-settings.toml
