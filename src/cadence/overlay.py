@@ -1,13 +1,16 @@
 """On-screen mic button and status pill, shown just above the taskbar.
 
-Idle: a thin bar that turns into a mic button when you hover it (click to start listening,
-click again to stop). Right-click and drag to move it anywhere; drop it near the middle of
-any screen edge (bottom, top, left, right) and it snaps there. Where it is, and which edge
-it's snapped to, is remembered in overlay.json next to the config file.
+Idle: a slim light-blue bar that turns into a mic button when you hover it (click to start
+listening, click again to stop). Right-click and drag to move it anywhere; drop it near the
+middle of any screen edge (bottom, top, left, right) and it snaps there. Where it is, and
+which edge it's snapped to, is remembered in overlay.json next to the config file.
 Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
 and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
 doesn't move your cursor and the paste still lands in the app you were typing in.
-Tk runs on its own thread; the pill polls Dictation state.
+
+Drawing is done by `overlay_render` (Pillow, anti-aliased, see-through). On Windows each
+frame goes to a per-pixel-alpha layered window (UpdateLayeredWindow); elsewhere it's shown
+on a Tk canvas. Tk runs on its own thread; the pill polls Dictation state.
 """
 
 from __future__ import annotations
@@ -18,28 +21,21 @@ import logging
 import sys
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from cadence.app import IDLE, LOADING, PROCESSING, RECORDING
 from cadence.feedback import Review
+from cadence.overlay_render import PRESETS, Layout, render, render_marker
 
 log = logging.getLogger(__name__)
 
-WIDTH, HEIGHT = 300, 44
-EDGE_MARGIN = 10  # gap between a snapped button and the screen edge / taskbar
-PRESETS = ("bottom", "top", "left", "right")  # snap spots, centered on each edge
-SNAP_DISTANCE = 140  # drop the button this close to a spot and it snaps there
-BAR_W, BAR_H = 46, 8  # idle bar
-PILL_W, PILL_H = 76, 32  # mic button shown on hover
 HOVER_LINGER = 0.4  # keep the button a moment after the cursor leaves (no flicker)
-KEY_COLOR = "#ff00fe"  # made fully transparent, gives the pill rounded corners
-BG = "#18181b"
+KEY_COLOR = "#000000"  # canvas background where there's no layered window (not Windows)
 FG = "#f4f4f5"
-RED = "#ef4444"
-AMBER = "#f59e0b"
-BLUE = "#60a5fa"
-BORDER = "#71717a"
+RED = "#f87171"
+AMBER = "#fbbf24"
+BLUE = "#7dd3fc"
 READY_SECONDS = 2.5
 NOTICE_SECONDS = 2.0
 ERROR_SECONDS = 4.0
@@ -70,52 +66,6 @@ def save_position(x: int, y: int, anchor: str | None = None) -> None:
         log.debug("Could not save overlay position", exc_info=True)
 
 
-def content_x(anchor: str | None) -> int:
-    """Where the button sits inside the window. Against the left or right edge it hugs that
-    side, so the button is right at the edge and the wider status pill extends inwards."""
-    if anchor == "left":
-        return PILL_W // 2 + 4
-    if anchor == "right":
-        return WIDTH - PILL_W // 2 - 4
-    return WIDTH // 2
-
-
-def preset_positions(work: tuple[int, int, int, int]) -> dict[str, tuple[int, int]]:
-    """Window position for each snap spot, given a monitor's work area (left, top, right,
-    bottom; the taskbar excluded). Every spot is centered along its edge."""
-    left, top, right, bottom = work
-    mid_x = (left + right) // 2 - WIDTH // 2
-    mid_y = (top + bottom) // 2 - HEIGHT // 2
-    return {
-        "bottom": (mid_x, bottom - HEIGHT - EDGE_MARGIN),
-        "top": (mid_x, top + EDGE_MARGIN),
-        "left": (left + EDGE_MARGIN, mid_y),
-        "right": (right - WIDTH - EDGE_MARGIN, mid_y),
-    }
-
-
-def button_center(pos: tuple[int, int], anchor: str | None) -> tuple[int, int]:
-    return pos[0] + content_x(anchor), pos[1] + HEIGHT // 2
-
-
-def nearest_preset(center: tuple[int, int], work: tuple[int, int, int, int],
-                   max_distance: float = SNAP_DISTANCE) -> str | None:
-    """The snap spot whose button would be closest to `center`, if it's close enough."""
-    best, best_d = None, max_distance
-    for name, pos in preset_positions(work).items():
-        bx, by = button_center(pos, name)
-        d = ((bx - center[0]) ** 2 + (by - center[1]) ** 2) ** 0.5
-        if d <= best_d:
-            best, best_d = name, d
-    return best
-
-
-def is_hovering(cursor: tuple[int, int], window: tuple[int, int], anchor: str | None) -> bool:
-    """Is the cursor over the bar / button (with a little slack, so it's easy to hit)?"""
-    cx, cy = button_center(window, anchor)
-    return abs(cursor[0] - cx) <= PILL_W // 2 + 6 and abs(cursor[1] - cy) <= HEIGHT // 2 + 4
-
-
 def work_area_at(root, x: int, y: int) -> tuple[int, int, int, int]:
     """Work area (excluding the taskbar) of the monitor nearest to the point."""
     if sys.platform == "win32":
@@ -142,7 +92,6 @@ def work_area_at(root, x: int, y: int) -> tuple[int, int, int, int]:
 
 def _on_screen(root, x: int, y: int) -> bool:
     """Is the saved spot still visible (e.g. a second monitor may have been unplugged)?"""
-    cx, cy = x + WIDTH // 2, y + HEIGHT // 2
     if sys.platform == "win32":
         import ctypes
         from ctypes import wintypes
@@ -150,8 +99,8 @@ def _on_screen(root, x: int, y: int) -> bool:
         user32 = ctypes.windll.user32
         user32.MonitorFromPoint.argtypes = (wintypes.POINT, wintypes.DWORD)
         user32.MonitorFromPoint.restype = wintypes.HANDLE
-        return bool(user32.MonitorFromPoint(wintypes.POINT(cx, cy), 0))  # 0 = DEFAULTTONULL
-    return 0 <= cx < root.winfo_screenwidth() and 0 <= cy < root.winfo_screenheight()
+        return bool(user32.MonitorFromPoint(wintypes.POINT(x, y), 0))  # 0 = DEFAULTTONULL
+    return 0 <= x < root.winfo_screenwidth() and 0 <= y < root.winfo_screenheight()
 
 
 def _pretty(combo: str) -> str:
@@ -175,16 +124,10 @@ def _bring_to_front(win) -> None:
         log.debug("Could not bring the feedback window to the front", exc_info=True)
 
 
-def _capsule(canvas, cx: int, cy: int, width: int, height: int, color: str) -> None:
-    """A rounded bar (stadium shape) centered on cx, cy."""
-    r = height / 2
-    canvas.create_line(cx - width / 2 + r, cy, cx + width / 2 - r, cy, fill=color,
-                       width=height, capstyle="round")
-
-
-def _make_unfocusable(win, click_through: bool = False):
-    """Make a Tk window one that never takes keyboard focus (and, optionally, lets clicks
-    through to the window below). Returns its native handle. Windows only."""
+def _make_layered(win, click_through: bool = False):
+    """Turn a Tk window into a layered window that never takes keyboard focus (and,
+    optionally, lets clicks through). Its pixels then come only from `_blit`. Returns its
+    native handle. Windows only."""
     import ctypes
 
     user32 = ctypes.windll.user32
@@ -193,20 +136,94 @@ def _make_unfocusable(win, click_through: bool = False):
     WS_EX_TOPMOST, WS_EX_TRANSPARENT = 0x8, 0x20
     WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED = 0x80, 0x08000000, 0x80000
     style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
-    style |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED
+    style |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE
     if click_through:
         style |= WS_EX_TRANSPARENT
-    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+    # Clear and re-set WS_EX_LAYERED: Tk's "-alpha" used SetLayeredWindowAttributes, which
+    # would make UpdateLayeredWindow fail.
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style & ~WS_EX_LAYERED)
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_LAYERED)
     return hwnd
 
 
-def _set_window_pos(hwnd, x: int, y: int) -> None:
+def _blit(hwnd, image) -> None:
+    """Show a Pillow RGBA image as the layered window's content, with per-pixel alpha."""
     import ctypes
+    from ctypes import wintypes
 
+    from cadence.overlay_render import premultiplied_bgra
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG),
+                    ("biHeight", wintypes.LONG), ("biPlanes", wintypes.WORD),
+                    ("biBitCount", wintypes.WORD), ("biCompression", wintypes.DWORD),
+                    ("biSizeImage", wintypes.DWORD), ("biXPelsPerMeter", wintypes.LONG),
+                    ("biYPelsPerMeter", wintypes.LONG), ("biClrUsed", wintypes.DWORD),
+                    ("biClrImportant", wintypes.DWORD)]
+
+    class BLENDFUNCTION(ctypes.Structure):
+        _fields_ = [("BlendOp", ctypes.c_ubyte), ("BlendFlags", ctypes.c_ubyte),
+                    ("SourceConstantAlpha", ctypes.c_ubyte), ("AlphaFormat", ctypes.c_ubyte)]
+
+    user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+    user32.GetDC.restype = wintypes.HDC
+    user32.GetDC.argtypes = (wintypes.HWND,)
+    user32.ReleaseDC.argtypes = (wintypes.HWND, wintypes.HDC)
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+    gdi32.CreateCompatibleDC.argtypes = (wintypes.HDC,)
+    gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+    gdi32.CreateDIBSection.argtypes = (wintypes.HDC, ctypes.c_void_p, wintypes.UINT,
+                                       ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE,
+                                       wintypes.DWORD)
+    gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    gdi32.SelectObject.argtypes = (wintypes.HDC, wintypes.HGDIOBJ)
+    gdi32.DeleteObject.argtypes = (wintypes.HGDIOBJ,)
+    gdi32.DeleteDC.argtypes = (wintypes.HDC,)
+    user32.UpdateLayeredWindow.argtypes = (
+        wintypes.HWND, wintypes.HDC, ctypes.c_void_p, ctypes.POINTER(wintypes.SIZE),
+        wintypes.HDC, ctypes.POINTER(wintypes.POINT), wintypes.DWORD,
+        ctypes.POINTER(BLENDFUNCTION), wintypes.DWORD)
+
+    w, h = image.size
+    data = premultiplied_bgra(image)
+    header = BITMAPINFOHEADER(ctypes.sizeof(BITMAPINFOHEADER), w, -h, 1, 32, 0, 0, 0, 0, 0, 0)
+    screen = user32.GetDC(None)
+    memory = gdi32.CreateCompatibleDC(screen)
+    bits = ctypes.c_void_p()
+    bitmap = gdi32.CreateDIBSection(screen, ctypes.byref(header), 0, ctypes.byref(bits), None, 0)
+    try:
+        ctypes.memmove(bits, data, len(data))
+        old = gdi32.SelectObject(memory, bitmap)
+        blend = BLENDFUNCTION(0, 0, 255, 1)  # AC_SRC_OVER, use per-pixel alpha
+        user32.UpdateLayeredWindow(hwnd, screen, None, ctypes.byref(wintypes.SIZE(w, h)),
+                                   memory, ctypes.byref(wintypes.POINT(0, 0)), 0,
+                                   ctypes.byref(blend), 2)  # ULW_ALPHA
+        gdi32.SelectObject(memory, old)
+    finally:
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(memory)
+        user32.ReleaseDC(None, screen)
+
+
+def _set_window_pos(hwnd, x: int, y: int, topmost: bool = False) -> None:
+    import ctypes
+    from ctypes import wintypes
+
+    user32 = ctypes.windll.user32
+    user32.SetWindowPos.argtypes = (wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+                                    ctypes.c_int, ctypes.c_int, wintypes.UINT)
     SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x1, 0x4, 0x10
-    ctypes.windll.user32.SetWindowPos(
-        hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
-    )
+    flags = SWP_NOSIZE | SWP_NOACTIVATE | (0 if topmost else SWP_NOZORDER)
+    user32.SetWindowPos(hwnd, -1 if topmost else None, x, y, 0, 0, flags)  # -1: HWND_TOPMOST
+
+
+def display_scale(root) -> float:
+    """Display scaling (1.0 = 100 %, 1.5 = 150 %). Real only when the process is DPI-aware
+    (see `win32.enable_dpi_awareness`); otherwise Windows reports 96 DPI and stretches us."""
+    try:
+        return max(1.0, min(4.0, root.winfo_fpixels("1i") / 96.0))
+    except Exception:
+        return 1.0
 
 
 @dataclass
@@ -242,6 +259,16 @@ def compute_view(state: str, now: float, ready_at: float | None,
     return View("hidden")
 
 
+def frame_key(view: View, anchor: str | None, levels, now: float) -> tuple:
+    """Everything a frame depends on: the overlay is redrawn only when this changes."""
+    key: tuple = (view.kind, view.text, view.color, anchor)
+    if view.kind == "listening":
+        key += (int(now * 3) % 2, tuple(round(v, 3) for v in levels))
+    elif view.kind == "working":
+        key += (int(now * 3) % 3,)
+    return key
+
+
 class Overlay:
     def __init__(self, dictation, hotkey: str, show_button: bool = True,
                  feedback_hotkey: str = "", prompt_seconds: float = 0.0,
@@ -260,8 +287,11 @@ class Overlay:
         self.ready_at: float | None = None
         self.error: tuple[float, str] | None = None
         self.levels: collections.deque[float] = collections.deque([0.0] * 18, maxlen=18)
+        self.layout = Layout()
         self.anchor: str | None = "bottom"  # snapped edge, or None if placed freely
         self._hover_until = 0.0
+        self._frame_key: tuple | None = None
+        self._was_down = {"left": False, "right": False}
         self._markers: dict = {}  # snap-spot outlines shown while dragging
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
@@ -300,19 +330,24 @@ class Overlay:
         except Exception:
             log.exception("Overlay failed; continuing without it")
 
+    def _new_window(self, tk, master=None):
+        """A borderless, topmost window (+ canvas) sized for the overlay, not yet visible."""
+        win = tk.Tk() if master is None else tk.Toplevel(master)
+        win.overrideredirect(True)
+        win.attributes("-topmost", True)
+        win.attributes("-alpha", 0.0)  # no flash before it's set up
+        win.configure(bg=KEY_COLOR)
+        if master is None:
+            self.layout = Layout(display_scale(win))
+        w, h = self.layout.width, self.layout.height
+        win.geometry(f"{w}x{h}+0+0")
+        canvas = tk.Canvas(win, width=w, height=h, bg=KEY_COLOR, highlightthickness=0, bd=0)
+        canvas.pack()
+        win.update_idletasks()
+        return win, canvas
+
     def _build(self, tk) -> None:
-        root = self.root = tk.Tk()
-        root.overrideredirect(True)
-        root.attributes("-topmost", True)
-        root.attributes("-alpha", 0.0)
-        root.configure(bg=KEY_COLOR)
-        if sys.platform == "win32":
-            root.attributes("-transparentcolor", KEY_COLOR)
-        x, y = self._placement(root)
-        root.geometry(f"{WIDTH}x{HEIGHT}+{x}+{y}")
-        self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
-                                highlightthickness=0, bd=0)
-        self.canvas.pack()
+        self.root, self.canvas = self._new_window(tk)
         self.canvas.bind("<ButtonPress-1>", self._on_left_press)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self.canvas.bind("<ButtonPress-3>", self._on_right_press)
@@ -320,54 +355,49 @@ class Overlay:
         self._press: tuple[int, int, int, int] | None = None
         self._press_button = "left"
         self._dragging = False
-        root.update_idletasks()
+        self._photo = None
         self.hwnd = None
         if sys.platform == "win32":
             # Purely informational without the button: let clicks pass through.
-            self.hwnd = _make_unfocusable(root, click_through=not self.show_button)
-        if self.show_button:
-            self._build_markers(tk)
+            self.hwnd = _make_layered(self.root, click_through=not self.show_button)
         self.visible = True
         self._hide()
-        root.attributes("-alpha", 0.94)
+        x, y = self._placement(self.root)
+        self._move(x, y)
+        if not self.hwnd:
+            self.root.attributes("-alpha", 0.94)
+        if self.show_button:
+            self._build_markers(tk)
+        log.debug("Overlay at %d,%d, scale %.2f", x, y, self.layout.scale)
         self._tick()
 
     def _placement(self, root) -> tuple[int, int]:
+        lay = self.layout
         saved = load_position()
         if saved:
             x, y, anchor = saved
             if anchor:  # re-centre on that edge (the screen size may have changed)
                 self.anchor = anchor
-                cx, cy = button_center((x, y), anchor)
-                return preset_positions(work_area_at(root, cx, cy))[anchor]
-            if _on_screen(root, x, y):
+                cx, cy = lay.button_center((x, y), anchor)
+                return lay.preset_positions(work_area_at(root, cx, cy))[anchor]
+            if _on_screen(root, *lay.button_center((x, y), None)):
                 self.anchor = None
                 return x, y
         self.anchor = "bottom"
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        return preset_positions(work_area_at(root, sw // 2, sh // 2))["bottom"]
+        return lay.preset_positions(work_area_at(root, sw // 2, sh // 2))["bottom"]
 
     def _build_markers(self, tk) -> None:
         """Outlines of the snap spots, shown while you drag the button. Created now, while
         the overlay itself is being set up, so showing them mid-drag never steals focus."""
         for name in PRESETS:
-            win = tk.Toplevel(self.root)
-            win.overrideredirect(True)
-            win.attributes("-topmost", True)
-            win.attributes("-alpha", 0.0)
-            win.configure(bg=KEY_COLOR)
-            if sys.platform == "win32":
-                win.attributes("-transparentcolor", KEY_COLOR)
-            win.geometry(f"{WIDTH}x{HEIGHT}+0+0")
-            canvas = tk.Canvas(win, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
-                               highlightthickness=0, bd=0)
-            canvas.pack()
-            win.update_idletasks()
-            hwnd = _make_unfocusable(win, click_through=True) if self.hwnd else None
+            win, canvas = self._new_window(tk, self.root)
+            hwnd = _make_layered(win, click_through=True) if self.hwnd else None
             self._markers[name] = {"win": win, "canvas": canvas, "hwnd": hwnd,
-                                   "active": None, "shown": True}
+                                   "active": None, "shown": True, "photo": None}
             self._marker_visible(name, False)
-            win.attributes("-alpha", 0.8)
+            if not hwnd:
+                win.attributes("-alpha", 0.9)
 
     def _marker_visible(self, name: str, visible: bool) -> None:
         m = self._markers[name]
@@ -392,30 +422,27 @@ class Overlay:
             for name in PRESETS:
                 self._marker_visible(name, False)
             return
+        lay = self.layout
         work = work_area_at(self.root, *center)
-        target = nearest_preset(center, work)
+        target = lay.nearest_preset(center, work)
         newly_shown = not any(m["shown"] for m in self._markers.values())
-        for name, (x, y) in preset_positions(work).items():
+        for name, (x, y) in lay.preset_positions(work).items():
             m = self._markers[name]
             active = name == target
             if m["active"] != active:
                 m["active"] = active
-                c, cx, cy = m["canvas"], content_x(name), HEIGHT // 2
-                c.delete("all")
-                color = BLUE if active else BORDER
-                _capsule(c, cx, cy, PILL_W, PILL_H, color)
-                _capsule(c, cx, cy, PILL_W - 4, PILL_H - 4, BG if active else KEY_COLOR)
+                image = render_marker(lay, name, active)
+                if m["hwnd"]:
+                    _blit(m["hwnd"], image)
+                else:
+                    m["photo"] = self._to_canvas(m["canvas"], image)
             if m["hwnd"]:
                 _set_window_pos(m["hwnd"], x, y)
             else:
                 m["win"].geometry(f"+{x}+{y}")
             self._marker_visible(name, True)
         if newly_shown and self.hwnd:  # keep the button above the outlines
-            import ctypes
-
-            SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
-            ctypes.windll.user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0,  # HWND_TOPMOST
-                                              SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
+            _set_window_pos(self.hwnd, *self._window_pos(), topmost=True)
 
     def _show(self) -> None:
         if self.visible:
@@ -439,36 +466,49 @@ class Overlay:
         else:
             self.root.withdraw()
 
-    def _pill(self) -> None:
-        c, r = self.canvas, HEIGHT // 2
-        c.create_oval(0, 0, HEIGHT, HEIGHT, fill=BG, outline=BG)
-        c.create_oval(WIDTH - HEIGHT, 0, WIDTH, HEIGHT, fill=BG, outline=BG)
-        c.create_rectangle(r, 0, WIDTH - r, HEIGHT, fill=BG, outline=BG)
-
     def _tick(self) -> None:
         try:
             recorder = self.dictation.recorder
             self.levels.append(getattr(recorder, "level", 0.0))
             now = time.monotonic()
-            if self.visible and is_hovering(self._cursor(), self._window_pos(), self.anchor):
+            cursor, window = self._cursor(), self._window_pos()
+            if self.visible and self.layout.is_hovering(cursor, window, self.anchor):
                 self._hover_until = now + HOVER_LINGER
             hovered = now < self._hover_until or self._press is not None
             if self._feedback_requested:
                 self._feedback_requested = False
                 self._open_feedback()
             self.view = compute_view(
-                self.dictation.state, time.monotonic(), self.ready_at, self.error, self.hotkey,
+                self.dictation.state, now, self.ready_at, self.error, self.hotkey,
                 self.show_button, self.pasted_at, self.prompt_seconds, self.notice,
                 self.feedback_hotkey, hovered,
             )
-            self._draw(self.view)
+            self._draw(self.view, now)
+            self._poll_buttons(cursor, window)
         except Exception:
             log.debug("Overlay tick failed", exc_info=True)
-        self.root.after(40, self._tick)
+        self.root.after(30, self._tick)
 
     # Left click = start/stop dictation. Right-click and drag = move the button.
     # While a button is down we poll the real cursor and mouse-button state instead of
     # relying on Tk motion/release events, which a no-activate window may not receive.
+    def _poll_buttons(self, cursor: tuple[int, int], window: tuple[int, int]) -> None:
+        """Windows: also notice presses by polling, in case the layered window's clicks
+        don't reach Tk. A press counts only if it starts on what's drawn."""
+        if not self.hwnd or not self.visible:
+            return
+        for button in ("left", "right"):
+            down = self._mouse_down(button)
+            if down and not self._was_down[button] and self._press is None:
+                if self.view.kind in ("bar", "button"):
+                    on_it = self.layout.on_button(cursor, window, self.anchor)
+                else:  # a status pill fills the window
+                    on_it = (0 <= cursor[0] - window[0] < self.layout.width
+                             and 0 <= cursor[1] - window[1] < self.layout.height)
+                if on_it:
+                    self._start_press(button, drag=button == "right")
+            self._was_down[button] = down
+
     def _on_left_press(self, event) -> None:
         self._start_press("left", drag=False)
 
@@ -480,6 +520,7 @@ class Overlay:
             return
         self._press = (*self._cursor(), *self._window_pos())
         self._press_button = button
+        self._was_down[button] = True
         self._dragging = drag
         log.debug("Mic button %s-pressed", button)
         self._poll_press()
@@ -495,7 +536,7 @@ class Overlay:
             px, py, wx, wy = self._press
             cx, cy = self._cursor()
             self._move(wx + cx - px, wy + cy - py)
-            self._update_markers(button_center(self._window_pos(), self.anchor))
+            self._update_markers(self.layout.button_center(self._window_pos(), self.anchor))
         if self._mouse_down(self._press_button):
             self.root.after(15, self._poll_press)
         else:
@@ -518,17 +559,19 @@ class Overlay:
 
     def _drop(self) -> None:
         """End of a drag: snap to the nearest edge spot if close, else stay where dropped."""
+        lay = self.layout
         x, y = self._window_pos()
-        center = button_center((x, y), self.anchor)
+        center = lay.button_center((x, y), self.anchor)
         work = work_area_at(self.root, *center)
-        target = nearest_preset(center, work)
+        target = lay.nearest_preset(center, work)
         if target:
-            x, y = preset_positions(work)[target]
+            x, y = lay.preset_positions(work)[target]
         else:
             # Free placement draws the button in the middle of the window; shift the
             # window so the button stays exactly where it was dropped.
-            x += content_x(self.anchor) - content_x(None)
+            x += lay.content_x(self.anchor) - lay.content_x(None)
         self.anchor = target
+        self._frame_key = None  # the button moves within the window
         self._move(x, y)
         save_position(x, y, target)
         log.debug("Mic button moved to %d,%d (%s)", x, y, target or "free")
@@ -549,7 +592,8 @@ class Overlay:
         x, y = self._window_pos()
         self._feedback_window = FeedbackWindow(
             tk, self.root, heard=result.raw, typed=result.text, cleanup=result.cleanup,
-            on_save=self._saved, near=button_center((x, y), self.anchor),
+            on_save=self._saved, near=self.layout.button_center((x, y), self.anchor),
+            scale=self.layout.scale,
         )
         if self.hwnd:
             _bring_to_front(self._feedback_window.win)
@@ -595,53 +639,27 @@ class Overlay:
         else:
             self.root.geometry(f"+{x}+{y}")
 
-    def _bar(self) -> None:
-        """Idle: a slim bar, out of the way until you hover it."""
-        cx, cy = content_x(self.anchor), HEIGHT // 2
-        _capsule(self.canvas, cx, cy, BAR_W + 2, BAR_H + 2, BORDER)
-        _capsule(self.canvas, cx, cy, BAR_W, BAR_H, BG)
+    def _to_canvas(self, canvas, image):
+        """Non-Windows fallback: show the image on a Tk canvas (no real transparency)."""
+        from PIL import Image, ImageTk
 
-    def _mic_button(self) -> None:
-        """Hovered: a rounded button with a microphone."""
-        c, cx, cy = self.canvas, content_x(self.anchor), HEIGHT // 2
-        _capsule(c, cx, cy, PILL_W + 2, PILL_H + 2, BORDER)
-        _capsule(c, cx, cy, PILL_W, PILL_H, BG)
-        c.create_line(cx, cy - 8, cx, cy - 1, fill=FG, width=7, capstyle="round")  # head
-        c.create_arc(cx - 8, cy - 12, cx + 8, cy + 4, start=200, extent=140,
-                     style="arc", outline=FG, width=2)  # holder
-        c.create_line(cx, cy + 4, cx, cy + 8, fill=FG, width=2)  # stand
-        c.create_line(cx - 4, cy + 8, cx + 4, cy + 8, fill=FG, width=2, capstyle="round")
+        backdrop = Image.new("RGBA", image.size, (0, 0, 0, 255))
+        photo = ImageTk.PhotoImage(Image.alpha_composite(backdrop, image))
+        canvas.delete("all")
+        canvas.create_image(0, 0, image=photo, anchor="nw")
+        return photo  # keep a reference, or Tk shows nothing
 
-    def _draw(self, view: View) -> None:
+    def _draw(self, view: View, now: float) -> None:
         if view.kind == "hidden":
             self._hide()
             return
-        c = self.canvas
-        c.delete("all")
-        font = ("Segoe UI", 11)
-        if view.kind in ("bar", "button"):
-            self._bar() if view.kind == "bar" else self._mic_button()
-            self._show()
-            return
-        self._pill()
-        if view.kind == "feedback_prompt":
-            c.create_text(WIDTH // 2, 22, text=view.text, fill=BLUE, font=font)
-            self._show()
-            return
-        if view.kind == "listening":
-            pulse = 5 + 2 * (int(time.monotonic() * 3) % 2)
-            c.create_oval(20 - pulse, 22 - pulse, 20 + pulse, 22 + pulse, fill=RED, outline=RED)
-            c.create_text(36, 22, text=view.text, fill=FG, font=font, anchor="w")
-            # Live mic meter: you can see that Cadence hears you.
-            x0 = 118
-            for i, level in enumerate(self.levels):
-                h = max(2, min(26, int((level ** 0.5) * 80)))
-                x = x0 + i * 6
-                c.create_rectangle(x, 22 - h // 2, x + 3, 22 + h // 2, fill=FG, outline=FG)
-        elif view.kind == "working":
-            dots = "." * (1 + int(time.monotonic() * 3) % 3)
-            c.create_oval(14, 16, 26, 28, fill=view.color, outline=view.color)
-            c.create_text(36, 22, text=view.text + dots, fill=FG, font=font, anchor="w")
-        else:
-            c.create_text(WIDTH // 2, 22, text=view.text, fill=view.color, font=font)
+        key = frame_key(view, self.anchor, self.levels, now)
+        if key != self._frame_key:
+            self._frame_key = key
+            image = render(view.kind, view.text, view.color, self.layout, self.anchor,
+                           self.levels, now)
+            if self.hwnd:
+                _blit(self.hwnd, image)
+            else:
+                self._photo = self._to_canvas(self.canvas, image)
         self._show()
