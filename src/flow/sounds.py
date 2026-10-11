@@ -20,11 +20,11 @@ def _beep(*tones: tuple[int, int]) -> None:
 
 
 def start() -> None:
-    _beep((880, 40))
+    _beep((880, 80))
 
 
 def stop() -> None:
-    _beep((660, 40))
+    _beep((660, 80))
 
 
 def error() -> None:

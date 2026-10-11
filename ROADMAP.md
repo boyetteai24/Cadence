@@ -20,13 +20,15 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - [x] Tray icon with state colors, "Copy last dictation", AI-cleanup switch, open config
 - [x] Audio cues, single-instance guard, autostart (`flow autostart on`), rotating log file
 - [x] Dev commands: `transcribe` (with timings / RTF), `clean`, `devices`, `init-config`
+- [x] On-screen status pill (listening + live mic meter, transcribing, ready, errors); never takes focus
+- [x] Paste via native SendInput after physical key release; target app logged; clipboard restored in background
 - [x] Unit tests for rules, LLM stage (fake client + stub server), pipeline, hotkeys, config
 
 ## Next — v0.2 (everyday polish)
 
 - [ ] **Validate on target hardware** (Windows 11 + NVIDIA GPU): run the full app, fill in the
       benchmark table below, tune defaults (`paste_delay_ms`, `beam_size`, model choice)
-- [ ] Small floating overlay near the cursor/taskbar showing listening/processing + mic level
+- [ ] Live preview of words in the overlay while speaking; transcribe during pauses so the final paste is near-instant
 - [ ] App-aware behavior: detect the foreground app (e.g. terminals use `ctrl+shift+v`;
       code editors skip trailing punctuation; chat apps casual tone)
 - [ ] Exclude dictation from Windows clipboard history (`ExcludeClipboardContentFromMonitorProcessing`)
@@ -47,8 +49,10 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 
 ## Known bugs / limitations
 
-- Not yet run end-to-end on Windows hardware; developed and unit-tested on Linux with fakes
-  (the model download host was unreachable from the dev sandbox).
+- **First Windows test (2026-10-10):** transcription worked on CUDA, but the paste did not land in
+  the focused text box. Fix attempt: native SendInput Ctrl+V after physical modifier release,
+  longer clipboard-restore delay, target app now logged ("Pasting into …"). Needs re-test.
+- The overlay is untested on real hardware (Tk not available in the dev sandbox).
 - Clipboard restore only preserves text; images/files on the clipboard are left replaced by the
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Flow (Windows UIPI).
@@ -65,7 +69,7 @@ per-dictation timings in `flow.log`.
 
 | Date | Hardware | Model / compute | Audio | STT | Cleanup | Insert | Notes |
 |------|----------|-----------------|-------|-----|---------|--------|-------|
-| _pending_ | NVIDIA GPU (user's machine) | large-v3-turbo / float16 | 10 s | — | rules — / local — / Haiku — | — | first measurement to fill in |
+| 2026-10-10 | NVIDIA GPU (user's machine, model TBD) | large-v3-turbo / float16 | 9.6 s | 1081 ms | rules 1 ms | 144 ms* | first real dictation; *insert included the old blocking 120 ms clipboard wait. Model load 94.6 s incl. first download |
 
 Targets (from `AGENTS.md`): STT < 400 ms, rules < 5 ms, local LLM < 600 ms, Haiku < 1 s,
 insert < 150 ms for a 10-second utterance.

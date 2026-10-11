@@ -23,8 +23,10 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 .\.venv\Scripts\pythonw.exe -m flow        # runs in the background (tray icon)
 ```
 
-The first start downloads the Whisper model (~1.6 GB). The tray icon is grey while the model
-loads and turns blue when Flow is ready.
+The first start downloads the Whisper model (~1.6 GB). A small pill at the bottom of the screen
+says "Flow is loading…", then "Flow ready". While you hold the shortcut it shows **Listening**
+with a live mic meter, then **Transcribing** until the text is pasted. The tray icon (click the
+**^** by the clock if it's hidden) shows the same states:
 
 | Tray color | Meaning |
 |------------|---------|

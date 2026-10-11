@@ -223,6 +223,11 @@ def run(cfg: Config) -> None:
         on_escape=lambda: dictation.stop_recording(cancel=True),
     )
 
+    if cfg.ui.overlay:
+        from flow.overlay import Overlay
+
+        Overlay(dictation, cfg.hotkey.combo).start()
+
     tray = None
     if cfg.ui.tray:
         try:
