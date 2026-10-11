@@ -39,12 +39,13 @@ claude_model = "claude-haiku-5-5"
 method = "paste"          # "paste" (recommended) or "type"
 paste_keys = "ctrl+v"
 restore_clipboard = true
-paste_delay_ms = 120
+paste_delay_ms = 400       # delay before restoring your clipboard (doesn't slow pasting)
 trailing_space = true
 
 [ui]
 sounds = true
 tray = true
+overlay = true            # "Listening" / "Transcribing" pill near the bottom of the screen
 
 [dictionary]
 # Names and jargon Whisper should spell correctly.

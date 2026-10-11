@@ -20,13 +20,16 @@ class Recorder:
         self._chunks: list[np.ndarray] = []
         self._recording = False
         self._lock = threading.Lock()
+        self.level = 0.0  # RMS of the latest audio block, for the on-screen meter
 
     def _callback(self, indata, frames, time_info, status) -> None:
         if status:
             log.debug("Audio status: %s", status)
         if self._recording:
+            block = indata[:, 0].copy()
+            self.level = float(np.sqrt(np.mean(block * block)))
             with self._lock:
-                self._chunks.append(indata[:, 0].copy())
+                self._chunks.append(block)
 
     def _open(self) -> None:
         if self._stream is not None:
@@ -61,6 +64,7 @@ class Recorder:
 
     def stop(self) -> np.ndarray:
         self._recording = False
+        self.level = 0.0
         if not self.keep_stream_open:
             self._close()
         with self._lock:

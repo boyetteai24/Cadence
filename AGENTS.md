@@ -43,7 +43,7 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
                        CleanupChain (cleanup/)   RuleCleaner → optional LLM cleaner
                            │ polished text            (fails soft to the rules output)
                            ▼
-                       Injector (output.py)      clipboard + Ctrl+V (restores clipboard)
+                       Injector (output.py)      clipboard + Ctrl+V via SendInput (restores clipboard)
 ```
 
 | Path | Responsibility |
@@ -57,6 +57,8 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/flow/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
 | `src/flow/output.py` | `PasteInjector`, `TypeInjector` |
 | `src/flow/tray.py` | pystray icon (state colors, menu) |
+| `src/flow/overlay.py` | Unfocusable on-screen status pill (Tk thread): listening + mic meter, transcribing, errors |
+| `src/flow/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window |
 | `src/flow/sounds.py` | Start/stop/error beeps |
 | `src/flow/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
 

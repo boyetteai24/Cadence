@@ -70,7 +70,7 @@ class OutputConfig:
     method: str = "paste"  # "paste" (clipboard + Ctrl+V) or "type" (synthetic keystrokes)
     paste_keys: str = "ctrl+v"  # e.g. "ctrl+shift+v" for some terminals
     restore_clipboard: bool = True
-    paste_delay_ms: int = 120  # wait before restoring the clipboard
+    paste_delay_ms: int = 400  # wait before restoring the clipboard (runs in background)
     trailing_space: bool = True  # so consecutive dictations don't run together
 
 
@@ -78,6 +78,7 @@ class OutputConfig:
 class UiConfig:
     sounds: bool = True
     tray: bool = True
+    overlay: bool = True  # status pill near the bottom of the screen
 
 
 @dataclass
