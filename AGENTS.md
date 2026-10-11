@@ -152,7 +152,10 @@ update notes (PR description) when a reinstall is needed.
 
 Git and PR conventions: PR descriptions and commit messages describe the change only. No
 Claude attribution or advertising lines ("Generated with Claude Code", Co-Authored-By
-trailers) and no links to Claude sessions.
+trailers) and no links to Claude sessions. The owner wants PRs merged into `main`
+automatically: once `pytest` passes and the PR is open, merge it yourself (merge commit), then
+reset the working branch from `origin/main` before the next change. Tell the owner it's merged
+and whether they need to `git pull`, reinstall or restart.
 
 Before committing: `pytest` passes, new behavior has tests, `ROADMAP.md` updated (move items to
 Completed, add any known bugs and new benchmark numbers).
