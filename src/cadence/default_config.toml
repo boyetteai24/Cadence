@@ -98,7 +98,8 @@ trailing_space = true     # add a space so the next dictation doesn't run on
 #  On-screen
 # ---------------------------------------------------------------------------
 [ui]
-button = true             # mic button: left-click to dictate, right-click + drag to move
+button = true             # bar that becomes a mic button on hover: left-click to dictate,
+                          # right-click + drag to move (snaps to the middle of any screen edge)
 overlay = true            # "Listening" / "Transcribing" pill (the button needs this on)
 tray = true               # icon by the clock, with a menu
 sounds = true             # beeps when listening starts and stops

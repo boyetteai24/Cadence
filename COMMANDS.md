@@ -270,4 +270,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.9.0 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.10.0 starting`.

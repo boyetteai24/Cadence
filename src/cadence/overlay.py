@@ -1,7 +1,9 @@
 """On-screen mic button and status pill, shown just above the taskbar.
 
-Idle: a small mic button (click to start listening, click again to stop). Right-click and
-drag to move it; the position is remembered in overlay.json next to the config file.
+Idle: a thin bar that turns into a mic button when you hover it (click to start listening,
+click again to stop). Right-click and drag to move it anywhere; drop it near the middle of
+any screen edge (bottom, top, left, right) and it snaps there. Where it is, and which edge
+it's snapped to, is remembered in overlay.json next to the config file.
 Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
 and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
 doesn't move your cursor and the paste still lands in the app you were typing in.
@@ -25,13 +27,19 @@ from cadence.feedback import Review
 log = logging.getLogger(__name__)
 
 WIDTH, HEIGHT = 300, 44
-BOTTOM_MARGIN = 24
+EDGE_MARGIN = 10  # gap between a snapped button and the screen edge / taskbar
+PRESETS = ("bottom", "top", "left", "right")  # snap spots, centered on each edge
+SNAP_DISTANCE = 140  # drop the button this close to a spot and it snaps there
+BAR_W, BAR_H = 46, 8  # idle bar
+PILL_W, PILL_H = 76, 32  # mic button shown on hover
+HOVER_LINGER = 0.4  # keep the button a moment after the cursor leaves (no flicker)
 KEY_COLOR = "#ff00fe"  # made fully transparent, gives the pill rounded corners
 BG = "#18181b"
 FG = "#f4f4f5"
 RED = "#ef4444"
 AMBER = "#f59e0b"
 BLUE = "#60a5fa"
+BORDER = "#71717a"
 READY_SECONDS = 2.5
 NOTICE_SECONDS = 2.0
 ERROR_SECONDS = 4.0
@@ -43,21 +51,93 @@ def _state_file():
     return config_dir() / "overlay.json"
 
 
-def load_position() -> tuple[int, int] | None:
+def load_position() -> tuple[int, int, str | None] | None:
+    """Saved (x, y, snapped edge or None)."""
     try:
         data = json.loads(_state_file().read_text("utf-8"))
-        return int(data["x"]), int(data["y"])
+        anchor = data.get("anchor")
+        return int(data["x"]), int(data["y"]), anchor if anchor in PRESETS else None
     except Exception:
         return None
 
 
-def save_position(x: int, y: int) -> None:
+def save_position(x: int, y: int, anchor: str | None = None) -> None:
     try:
         path = _state_file()
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({"x": x, "y": y}), "utf-8")
+        path.write_text(json.dumps({"x": x, "y": y, "anchor": anchor}), "utf-8")
     except OSError:
         log.debug("Could not save overlay position", exc_info=True)
+
+
+def content_x(anchor: str | None) -> int:
+    """Where the button sits inside the window. Against the left or right edge it hugs that
+    side, so the button is right at the edge and the wider status pill extends inwards."""
+    if anchor == "left":
+        return PILL_W // 2 + 4
+    if anchor == "right":
+        return WIDTH - PILL_W // 2 - 4
+    return WIDTH // 2
+
+
+def preset_positions(work: tuple[int, int, int, int]) -> dict[str, tuple[int, int]]:
+    """Window position for each snap spot, given a monitor's work area (left, top, right,
+    bottom; the taskbar excluded). Every spot is centered along its edge."""
+    left, top, right, bottom = work
+    mid_x = (left + right) // 2 - WIDTH // 2
+    mid_y = (top + bottom) // 2 - HEIGHT // 2
+    return {
+        "bottom": (mid_x, bottom - HEIGHT - EDGE_MARGIN),
+        "top": (mid_x, top + EDGE_MARGIN),
+        "left": (left + EDGE_MARGIN, mid_y),
+        "right": (right - WIDTH - EDGE_MARGIN, mid_y),
+    }
+
+
+def button_center(pos: tuple[int, int], anchor: str | None) -> tuple[int, int]:
+    return pos[0] + content_x(anchor), pos[1] + HEIGHT // 2
+
+
+def nearest_preset(center: tuple[int, int], work: tuple[int, int, int, int],
+                   max_distance: float = SNAP_DISTANCE) -> str | None:
+    """The snap spot whose button would be closest to `center`, if it's close enough."""
+    best, best_d = None, max_distance
+    for name, pos in preset_positions(work).items():
+        bx, by = button_center(pos, name)
+        d = ((bx - center[0]) ** 2 + (by - center[1]) ** 2) ** 0.5
+        if d <= best_d:
+            best, best_d = name, d
+    return best
+
+
+def is_hovering(cursor: tuple[int, int], window: tuple[int, int], anchor: str | None) -> bool:
+    """Is the cursor over the bar / button (with a little slack, so it's easy to hit)?"""
+    cx, cy = button_center(window, anchor)
+    return abs(cursor[0] - cx) <= PILL_W // 2 + 6 and abs(cursor[1] - cy) <= HEIGHT // 2 + 4
+
+
+def work_area_at(root, x: int, y: int) -> tuple[int, int, int, int]:
+    """Work area (excluding the taskbar) of the monitor nearest to the point."""
+    if sys.platform == "win32":
+        import ctypes
+        from ctypes import wintypes
+
+        class MONITORINFO(ctypes.Structure):
+            _fields_ = [("cbSize", wintypes.DWORD), ("rcMonitor", wintypes.RECT),
+                        ("rcWork", wintypes.RECT), ("dwFlags", wintypes.DWORD)]
+
+        user32 = ctypes.windll.user32
+        user32.MonitorFromPoint.argtypes = (wintypes.POINT, wintypes.DWORD)
+        user32.MonitorFromPoint.restype = wintypes.HANDLE
+        user32.GetMonitorInfoW.argtypes = (wintypes.HANDLE, ctypes.POINTER(MONITORINFO))
+        info = MONITORINFO()
+        info.cbSize = ctypes.sizeof(MONITORINFO)
+        monitor = user32.MonitorFromPoint(wintypes.POINT(x, y), 2)  # DEFAULTTONEAREST
+        if monitor and user32.GetMonitorInfoW(monitor, ctypes.byref(info)):
+            r = info.rcWork
+            return r.left, r.top, r.right, r.bottom
+    sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
+    return 0, 0, sw, sh - 48  # assume a taskbar if we can't ask Windows
 
 
 def _on_screen(root, x: int, y: int) -> bool:
@@ -95,9 +175,43 @@ def _bring_to_front(win) -> None:
         log.debug("Could not bring the feedback window to the front", exc_info=True)
 
 
+def _capsule(canvas, cx: int, cy: int, width: int, height: int, color: str) -> None:
+    """A rounded bar (stadium shape) centered on cx, cy."""
+    r = height / 2
+    canvas.create_line(cx - width / 2 + r, cy, cx + width / 2 - r, cy, fill=color,
+                       width=height, capstyle="round")
+
+
+def _make_unfocusable(win, click_through: bool = False):
+    """Make a Tk window one that never takes keyboard focus (and, optionally, lets clicks
+    through to the window below). Returns its native handle. Windows only."""
+    import ctypes
+
+    user32 = ctypes.windll.user32
+    hwnd = user32.GetParent(win.winfo_id()) or win.winfo_id()
+    GWL_EXSTYLE = -20
+    WS_EX_TOPMOST, WS_EX_TRANSPARENT = 0x8, 0x20
+    WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED = 0x80, 0x08000000, 0x80000
+    style = user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+    style |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED
+    if click_through:
+        style |= WS_EX_TRANSPARENT
+    user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style)
+    return hwnd
+
+
+def _set_window_pos(hwnd, x: int, y: int) -> None:
+    import ctypes
+
+    SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x1, 0x4, 0x10
+    ctypes.windll.user32.SetWindowPos(
+        hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+    )
+
+
 @dataclass
 class View:
-    kind: str  # "hidden" | "button" | "listening" | "working" | "message" | "feedback_prompt"
+    kind: str  # "hidden" | "bar" | "button" | "listening" | "working" | "message" | "feedback_prompt"
     text: str = ""
     color: str = FG
 
@@ -106,7 +220,7 @@ def compute_view(state: str, now: float, ready_at: float | None,
                  error: tuple[float, str] | None, hotkey: str,
                  show_button: bool = True, pasted_at: float | None = None,
                  prompt_seconds: float = 0.0, notice: tuple[float, str] | None = None,
-                 feedback_hotkey: str = "") -> View:
+                 feedback_hotkey: str = "", hovered: bool = False) -> View:
     """What the pill should display right now (pure, so it's unit-testable)."""
     if error and now - error[0] < ERROR_SECONDS:
         return View("message", error[1], AMBER)
@@ -124,7 +238,7 @@ def compute_view(state: str, now: float, ready_at: float | None,
         hint = f" · {feedback_hotkey}" if feedback_hotkey else ""
         return View("feedback_prompt", f"Pasted · Feedback{hint}", FG)
     if state == IDLE and show_button:
-        return View("button")
+        return View("button" if hovered else "bar")
     return View("hidden")
 
 
@@ -146,6 +260,9 @@ class Overlay:
         self.ready_at: float | None = None
         self.error: tuple[float, str] | None = None
         self.levels: collections.deque[float] = collections.deque([0.0] * 18, maxlen=18)
+        self.anchor: str | None = "bottom"  # snapped edge, or None if placed freely
+        self._hover_until = 0.0
+        self._markers: dict = {}  # snap-spot outlines shown while dragging
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
         dictation.result_listeners.append(self._on_result)
@@ -191,7 +308,7 @@ class Overlay:
         root.configure(bg=KEY_COLOR)
         if sys.platform == "win32":
             root.attributes("-transparentcolor", KEY_COLOR)
-        x, y = self._position(root)
+        x, y = self._placement(root)
         root.geometry(f"{WIDTH}x{HEIGHT}+{x}+{y}")
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
                                 highlightthickness=0, bd=0)
@@ -206,43 +323,99 @@ class Overlay:
         root.update_idletasks()
         self.hwnd = None
         if sys.platform == "win32":
-            self._make_unfocusable()
+            # Purely informational without the button: let clicks pass through.
+            self.hwnd = _make_unfocusable(root, click_through=not self.show_button)
+        if self.show_button:
+            self._build_markers(tk)
         self.visible = True
         self._hide()
         root.attributes("-alpha", 0.94)
         self._tick()
 
-    def _position(self, root) -> tuple[int, int]:
+    def _placement(self, root) -> tuple[int, int]:
         saved = load_position()
-        if saved and _on_screen(root, *saved):
-            return saved
-        return self._default_position(root)
-
-    def _default_position(self, root) -> tuple[int, int]:
+        if saved:
+            x, y, anchor = saved
+            if anchor:  # re-centre on that edge (the screen size may have changed)
+                self.anchor = anchor
+                cx, cy = button_center((x, y), anchor)
+                return preset_positions(work_area_at(root, cx, cy))[anchor]
+            if _on_screen(root, x, y):
+                self.anchor = None
+                return x, y
+        self.anchor = "bottom"
         sw, sh = root.winfo_screenwidth(), root.winfo_screenheight()
-        bottom = sh - 48  # assume a taskbar if we can't ask Windows
-        if sys.platform == "win32":
+        return preset_positions(work_area_at(root, sw // 2, sh // 2))["bottom"]
+
+    def _build_markers(self, tk) -> None:
+        """Outlines of the snap spots, shown while you drag the button. Created now, while
+        the overlay itself is being set up, so showing them mid-drag never steals focus."""
+        for name in PRESETS:
+            win = tk.Toplevel(self.root)
+            win.overrideredirect(True)
+            win.attributes("-topmost", True)
+            win.attributes("-alpha", 0.0)
+            win.configure(bg=KEY_COLOR)
+            if sys.platform == "win32":
+                win.attributes("-transparentcolor", KEY_COLOR)
+            win.geometry(f"{WIDTH}x{HEIGHT}+0+0")
+            canvas = tk.Canvas(win, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
+                               highlightthickness=0, bd=0)
+            canvas.pack()
+            win.update_idletasks()
+            hwnd = _make_unfocusable(win, click_through=True) if self.hwnd else None
+            self._markers[name] = {"win": win, "canvas": canvas, "hwnd": hwnd,
+                                   "active": None, "shown": True}
+            self._marker_visible(name, False)
+            win.attributes("-alpha", 0.8)
+
+    def _marker_visible(self, name: str, visible: bool) -> None:
+        m = self._markers[name]
+        if m["shown"] == visible:
+            return
+        m["shown"] = visible
+        if m["hwnd"]:
             import ctypes
-            from ctypes import wintypes
 
-            rect = wintypes.RECT()
-            if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
-                bottom = rect.bottom  # SPI_GETWORKAREA: excludes the taskbar
-        return (sw - WIDTH) // 2, bottom - HEIGHT - BOTTOM_MARGIN
+            ctypes.windll.user32.ShowWindow(m["hwnd"], 4 if visible else 0)
+        elif visible:
+            m["win"].deiconify()
+        else:
+            m["win"].withdraw()
 
-    def _make_unfocusable(self) -> None:
-        import ctypes
+    def _update_markers(self, center: tuple[int, int] | None) -> None:
+        """Show the snap spots on the monitor under the button, the one it would snap to
+        highlighted. `None` hides them."""
+        if not self._markers:
+            return
+        if center is None:
+            for name in PRESETS:
+                self._marker_visible(name, False)
+            return
+        work = work_area_at(self.root, *center)
+        target = nearest_preset(center, work)
+        newly_shown = not any(m["shown"] for m in self._markers.values())
+        for name, (x, y) in preset_positions(work).items():
+            m = self._markers[name]
+            active = name == target
+            if m["active"] != active:
+                m["active"] = active
+                c, cx, cy = m["canvas"], content_x(name), HEIGHT // 2
+                c.delete("all")
+                color = BLUE if active else BORDER
+                _capsule(c, cx, cy, PILL_W, PILL_H, color)
+                _capsule(c, cx, cy, PILL_W - 4, PILL_H - 4, BG if active else KEY_COLOR)
+            if m["hwnd"]:
+                _set_window_pos(m["hwnd"], x, y)
+            else:
+                m["win"].geometry(f"+{x}+{y}")
+            self._marker_visible(name, True)
+        if newly_shown and self.hwnd:  # keep the button above the outlines
+            import ctypes
 
-        user32 = ctypes.windll.user32
-        self.hwnd = user32.GetParent(self.root.winfo_id()) or self.root.winfo_id()
-        GWL_EXSTYLE = -20
-        WS_EX_TOPMOST, WS_EX_TRANSPARENT = 0x8, 0x20
-        WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED = 0x80, 0x08000000, 0x80000
-        style = user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
-        style |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED
-        if not self.show_button:
-            style |= WS_EX_TRANSPARENT  # purely informational: let clicks pass through
-        user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, style)
+            SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE = 0x1, 0x2, 0x10
+            ctypes.windll.user32.SetWindowPos(self.hwnd, -1, 0, 0, 0, 0,  # HWND_TOPMOST
+                                              SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE)
 
     def _show(self) -> None:
         if self.visible:
@@ -276,13 +449,17 @@ class Overlay:
         try:
             recorder = self.dictation.recorder
             self.levels.append(getattr(recorder, "level", 0.0))
+            now = time.monotonic()
+            if self.visible and is_hovering(self._cursor(), self._window_pos(), self.anchor):
+                self._hover_until = now + HOVER_LINGER
+            hovered = now < self._hover_until or self._press is not None
             if self._feedback_requested:
                 self._feedback_requested = False
                 self._open_feedback()
             self.view = compute_view(
                 self.dictation.state, time.monotonic(), self.ready_at, self.error, self.hotkey,
                 self.show_button, self.pasted_at, self.prompt_seconds, self.notice,
-                self.feedback_hotkey,
+                self.feedback_hotkey, hovered,
             )
             self._draw(self.view)
         except Exception:
@@ -318,6 +495,7 @@ class Overlay:
             px, py, wx, wy = self._press
             cx, cy = self._cursor()
             self._move(wx + cx - px, wy + cy - py)
+            self._update_markers(button_center(self._window_pos(), self.anchor))
         if self._mouse_down(self._press_button):
             self.root.after(15, self._poll_press)
         else:
@@ -329,15 +507,31 @@ class Overlay:
         self._press = None
         if self._dragging:
             self._dragging = False
-            x, y = self._window_pos()
-            save_position(x, y)
-            log.debug("Mic button moved to %d,%d", x, y)
+            self._update_markers(None)
+            self._drop()
             return
         if self.view.kind == "feedback_prompt":
             self._open_feedback()
-        elif self.view.kind in ("button", "listening"):
+        elif self.view.kind in ("bar", "button", "listening"):
             # Off the Tk thread: opening the microphone can take a moment.
             threading.Thread(target=self.dictation.click, daemon=True).start()
+
+    def _drop(self) -> None:
+        """End of a drag: snap to the nearest edge spot if close, else stay where dropped."""
+        x, y = self._window_pos()
+        center = button_center((x, y), self.anchor)
+        work = work_area_at(self.root, *center)
+        target = nearest_preset(center, work)
+        if target:
+            x, y = preset_positions(work)[target]
+        else:
+            # Free placement draws the button in the middle of the window; shift the
+            # window so the button stays exactly where it was dropped.
+            x += content_x(self.anchor) - content_x(None)
+        self.anchor = target
+        self._move(x, y)
+        save_position(x, y, target)
+        log.debug("Mic button moved to %d,%d (%s)", x, y, target or "free")
 
     def _open_feedback(self) -> None:
         """Tk thread only."""
@@ -355,7 +549,7 @@ class Overlay:
         x, y = self._window_pos()
         self._feedback_window = FeedbackWindow(
             tk, self.root, heard=result.raw, typed=result.text, cleanup=result.cleanup,
-            on_save=self._saved, near=(x + WIDTH // 2, y),
+            on_save=self._saved, near=button_center((x, y), self.anchor),
         )
         if self.hwnd:
             _bring_to_front(self._feedback_window.win)
@@ -397,25 +591,26 @@ class Overlay:
 
     def _move(self, x: int, y: int) -> None:
         if self.hwnd:
-            import ctypes
-
-            SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x1, 0x4, 0x10
-            ctypes.windll.user32.SetWindowPos(
-                self.hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
-            )
+            _set_window_pos(self.hwnd, x, y)
         else:
             self.root.geometry(f"+{x}+{y}")
 
+    def _bar(self) -> None:
+        """Idle: a slim bar, out of the way until you hover it."""
+        cx, cy = content_x(self.anchor), HEIGHT // 2
+        _capsule(self.canvas, cx, cy, BAR_W + 2, BAR_H + 2, BORDER)
+        _capsule(self.canvas, cx, cy, BAR_W, BAR_H, BG)
+
     def _mic_button(self) -> None:
-        c, cx, cy, r = self.canvas, WIDTH // 2, HEIGHT // 2, HEIGHT // 2 - 2
-        c.create_oval(cx - r, cy - r, cx + r, cy + r, fill=BG, outline="#3f3f46", width=2)
-        # Microphone glyph.
-        c.create_oval(cx - 5, cy - 12, cx + 5, cy - 2, fill=FG, outline=FG)
-        c.create_rectangle(cx - 5, cy - 7, cx + 5, cy - 1, fill=FG, outline=FG)
-        c.create_oval(cx - 5, cy - 6, cx + 5, cy + 4, fill=FG, outline=FG)
-        c.create_arc(cx - 9, cy - 10, cx + 9, cy + 8, start=200, extent=140,
-                     style="arc", outline=FG, width=2)
-        c.create_line(cx, cy + 8, cx, cy + 12, fill=FG, width=2)
+        """Hovered: a rounded button with a microphone."""
+        c, cx, cy = self.canvas, content_x(self.anchor), HEIGHT // 2
+        _capsule(c, cx, cy, PILL_W + 2, PILL_H + 2, BORDER)
+        _capsule(c, cx, cy, PILL_W, PILL_H, BG)
+        c.create_line(cx, cy - 8, cx, cy - 1, fill=FG, width=7, capstyle="round")  # head
+        c.create_arc(cx - 8, cy - 12, cx + 8, cy + 4, start=200, extent=140,
+                     style="arc", outline=FG, width=2)  # holder
+        c.create_line(cx, cy + 4, cx, cy + 8, fill=FG, width=2)  # stand
+        c.create_line(cx - 4, cy + 8, cx + 4, cy + 8, fill=FG, width=2, capstyle="round")
 
     def _draw(self, view: View) -> None:
         if view.kind == "hidden":
@@ -424,8 +619,8 @@ class Overlay:
         c = self.canvas
         c.delete("all")
         font = ("Segoe UI", 11)
-        if view.kind == "button":
-            self._mic_button()
+        if view.kind in ("bar", "button"):
+            self._bar() if view.kind == "bar" else self._mic_button()
             self._show()
             return
         self._pill()

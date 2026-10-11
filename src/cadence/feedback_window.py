@@ -83,7 +83,9 @@ class FeedbackWindow:
     def _position(win, near: tuple[int, int] | None) -> tuple[int, int]:
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
         if near:
-            x, y = near[0] - WIDTH // 2, near[1] - HEIGHT - 12
+            x, y = near[0] - WIDTH // 2, near[1] - HEIGHT - 30
+            if y < 0:  # the button is at the top of the screen: open below it
+                y = near[1] + 30
         else:
             x, y = (sw - WIDTH) // 2, (sh - HEIGHT) // 2
         return max(0, min(x, sw - WIDTH)), max(0, min(y, sh - HEIGHT))
