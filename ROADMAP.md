@@ -33,6 +33,7 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - [x] All settings in one commented `settings.toml` in the project folder (git-ignored, created
       on first run). The Claude API key is read only from `ANTHROPIC_API_KEY`, never a file
 - [x] One-run overrides from the command line: `--llm claude`, `--set section.name=value`
+- [x] `COMMANDS.md`: copy-paste PowerShell cheat sheet in the project folder
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
 - [x] Mic button moved by right-click + drag; position remembered across restarts (drag tracks
       the real cursor via Win32 polling, since Tk motion events didn't arrive on Windows)

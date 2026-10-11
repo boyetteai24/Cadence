@@ -133,6 +133,11 @@ python -m cadence transcribe sample.wav --repeat 3   # STT + cleanup timing
 python -m cadence clean "um so I I think, no wait, I know"   # cleanup only
 ```
 
+`COMMANDS.md` is the user's copy-paste PowerShell cheat sheet. The user isn't familiar with
+PowerShell and runs commands exactly as written, so whenever a command, flag, path or setup
+step changes, update `COMMANDS.md` in the same change. Mark one-time steps, and say in the
+update notes (PR description) when a reinstall is needed.
+
 Git and PR conventions: PR descriptions and commit messages describe the change only. No
 Claude attribution or advertising lines ("Generated with Claude Code", Co-Authored-By
 trailers) and no links to Claude sessions.

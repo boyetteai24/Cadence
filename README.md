@@ -1,5 +1,8 @@
 # Cadence
 
+> **New to PowerShell?** [COMMANDS.md](COMMANDS.md) has every command you need (start, stop,
+> update, settings, one-run options, API key), ready to copy and paste.
+
 Voice dictation for Windows that works in any app. Hold **Ctrl + Win**, speak naturally, let go,
 and cleaned-up text is pasted wherever your cursor is.
 
