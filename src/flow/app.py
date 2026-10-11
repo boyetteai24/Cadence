@@ -336,6 +336,9 @@ class Dictation:
 
 def run(cfg: Config) -> None:
     """Wire real components together and run until quit."""
+    from flow import __version__
+
+    log.info("Flow %s starting", __version__)
     from flow.audio import Recorder
     from flow.cleanup import build_cleaner
     from flow.hotkey import GlobalHotkeyListener

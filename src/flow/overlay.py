@@ -149,7 +149,6 @@ class Overlay:
                                 highlightthickness=0, bd=0)
         self.canvas.pack()
         self.canvas.bind("<ButtonPress-1>", self._on_press)
-        self.canvas.bind("<B1-Motion>", self._on_drag)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
         self._press: tuple[int, int, int, int] | None = None
         self._dragging = False
@@ -234,31 +233,86 @@ class Overlay:
         self.root.after(40, self._tick)
 
     # Press + release without moving = click; press + move = drag the window.
+    # While the button is down we poll the real cursor and mouse-button state instead of
+    # relying on Tk motion/release events, which a no-activate window may not receive.
     def _on_press(self, event) -> None:
-        self._press = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
+        self._press = (*self._cursor(), *self._window_pos())
         self._dragging = False
+        log.debug("Mic button pressed")
+        self._poll_press()
 
-    def _on_drag(self, event) -> None:
+    def _on_release(self, event) -> None:
+        if not self.hwnd:  # on Windows the poll loop detects the release itself
+            self._finish_press()
+
+    def _poll_press(self) -> None:
         if self._press is None:
             return
         px, py, wx, wy = self._press
-        dx, dy = event.x_root - px, event.y_root - py
-        if not self._dragging and abs(dx) + abs(dy) < DRAG_THRESHOLD:
-            return
-        self._dragging = True
-        self.root.geometry(f"+{wx + dx}+{wy + dy}")
+        cx, cy = self._cursor()
+        dx, dy = cx - px, cy - py
+        if not self._dragging and abs(dx) + abs(dy) >= DRAG_THRESHOLD:
+            self._dragging = True
+        if self._dragging:
+            self._move(wx + dx, wy + dy)
+        if self._mouse_down():
+            self.root.after(15, self._poll_press)
+        else:
+            self._finish_press()
 
-    def _on_release(self, event) -> None:
+    def _finish_press(self) -> None:
         if self._press is None:
             return
         self._press = None
         if self._dragging:
             self._dragging = False
-            save_position(self.root.winfo_x(), self.root.winfo_y())
+            x, y = self._window_pos()
+            save_position(x, y)
+            log.debug("Mic button moved to %d,%d", x, y)
             return
         if self.view.kind in ("button", "listening"):
             # Off the Tk thread: opening the microphone can take a moment.
             threading.Thread(target=self.dictation.click, daemon=True).start()
+
+    def _cursor(self) -> tuple[int, int]:
+        if self.hwnd:
+            import ctypes
+            from ctypes import wintypes
+
+            pt = wintypes.POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            return pt.x, pt.y
+        return self.root.winfo_pointerxy()
+
+    def _window_pos(self) -> tuple[int, int]:
+        if self.hwnd:
+            import ctypes
+            from ctypes import wintypes
+
+            rect = wintypes.RECT()
+            ctypes.windll.user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+            return rect.left, rect.top
+        return self.root.winfo_x(), self.root.winfo_y()
+
+    def _mouse_down(self) -> bool:
+        if self.hwnd:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            vk = 0x02 if user32.GetSystemMetrics(23) else 0x01  # left-handed: buttons swapped
+            return bool(user32.GetAsyncKeyState(vk) & 0x8000)
+        return self._press is not None  # Tk's release event ends the press
+
+    def _move(self, x: int, y: int) -> None:
+        if self.hwnd:
+            import ctypes
+
+            SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x1, 0x4, 0x10
+            ctypes.windll.user32.SetWindowPos(
+                self.hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+            )
+        else:
+            self.root.geometry(f"+{x}+{y}")
 
     def _mic_button(self) -> None:
         c, cx, cy, r = self.canvas, WIDTH // 2, HEIGHT // 2, HEIGHT // 2 - 2

@@ -28,7 +28,8 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - [x] Pause splitting: phrases transcribed at each pause while you talk; typed live when
       hands-free, buffered while the hotkey is held; earlier text passed as Whisper context
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
-- [x] Draggable mic button; position remembered across restarts
+- [x] Draggable mic button; position remembered across restarts (v0.2.0: drag tracks the real
+      cursor via Win32 polling, since Tk motion events didn't arrive on the user's machine)
 - [x] Unit tests for rules, LLM stage (fake client + stub server), pipeline, hotkeys, config
 
 ## Next — v0.2 (everyday polish)
