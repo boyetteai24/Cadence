@@ -39,9 +39,14 @@ To start Flow when you sign in: `.\.venv\Scripts\python.exe -m flow autostart on
 
 ## Use
 
-- **Hold `Ctrl+Win`**, speak, release. To use a press-to-start, press-to-stop shortcut instead,
-  set `mode = "toggle"`.
-- **Esc** cancels the current recording.
+There are three ways to dictate:
+
+- **Hold `Ctrl+Win`**, speak, and let go.
+- **Tap `Ctrl+Win`** once and talk hands-free. Tap again to finish.
+- **Click the mic button** just above the taskbar, talk, then click the "Listening" pill to
+  finish. Clicking it doesn't move your cursor, so the text still goes where you were typing.
+
+**Esc** cancels the current recording.
 - **Corrections:** "…at 3pm, no wait, 4pm" → "…at 4pm". "Scratch that" deletes the previous sentence.
 - **Formatting:** say "new line" or "new paragraph".
 - If text didn't land where you wanted it, use **tray → Copy last dictation**.
@@ -54,7 +59,7 @@ Run `python -m flow init-config` (or use **tray → Open config file**) to creat
 ```toml
 [hotkey]
 combo = "ctrl+win"        # e.g. "ctrl_r", "ctrl+alt+space", "f9"
-mode = "hold"             # or "toggle"
+mode = "tap_or_hold"      # or "hold" (push-to-talk only) or "toggle"
 
 [stt]
 model = "large-v3-turbo"  # "distil-large-v3" is faster; "small.en" runs on weak GPUs/CPU

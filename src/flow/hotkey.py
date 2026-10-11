@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import threading
 from typing import Callable
 
 log = logging.getLogger(__name__)
@@ -130,19 +131,26 @@ class GlobalHotkeyListener:
         self.on_escape = on_escape
         self._listener = None
 
-    def _on_press(self, key) -> None:
+    def _on_press(self, key, injected: bool = False) -> None:
+        if injected:  # our own paste / Esc / Start-menu mask, not the user
+            return
         try:
             name = pynput_key_name(key)
             if name == "esc" and self.on_escape:
                 self.on_escape()
             if self.matcher.press(name) == "activate":
                 if self.matcher.uses_win:
-                    suppress_start_menu()
+                    # Must run *after* Windows has processed this Win key-down, so not
+                    # from inside the hook callback (that would put the mask key before it
+                    # and Start would still open when Win is released).
+                    threading.Timer(0.03, suppress_start_menu).start()
                 self.on_activate()
         except Exception:
             log.exception("Hotkey press handler failed")
 
-    def _on_release(self, key) -> None:
+    def _on_release(self, key, injected: bool = False) -> None:
+        if injected:
+            return
         try:
             if self.matcher.release(pynput_key_name(key)) == "deactivate":
                 self.on_deactivate()

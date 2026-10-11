@@ -21,6 +21,8 @@ from flow.config import Config
 log = logging.getLogger(__name__)
 
 IDLE, RECORDING, PROCESSING, LOADING = "idle", "recording", "processing", "loading"
+# A shortcut press shorter than this is a "tap" (starts hands-free listening).
+TAP_SECONDS = 0.35
 
 
 @dataclass
@@ -56,6 +58,9 @@ class Dictation:
         self._pending = 0
         self._lock = threading.Lock()
         self._worker = threading.Thread(target=self._work, name="flow-worker", daemon=True)
+        self._pressed_at = 0.0
+        self._latched = False  # recording continues after the shortcut is released
+        self._ignore_next_up = False
 
     # --- state ---------------------------------------------------------------
     def _set_state(self, state: str) -> None:
@@ -122,6 +127,49 @@ class Dictation:
             self.stop_recording()
         else:
             self.start_recording()
+
+    # --- input sources ------------------------------------------------------------
+    # hold:        record while the shortcut is held.
+    # toggle:      press to start, press again to stop.
+    # tap_or_hold: hold to talk, or tap quickly to start hands-free (tap again to stop).
+    def hotkey_down(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        if self.state == RECORDING:
+            if self._latched:  # hands-free recording: this press stops it
+                self._latched = False
+                self._ignore_next_up = True
+                self.stop_recording()
+            return
+        self._pressed_at = now
+        self._latched = False
+        self.start_recording()
+
+    def hotkey_up(self, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else now
+        if self._ignore_next_up:
+            self._ignore_next_up = False
+            return
+        if self.state != RECORDING or self._latched:
+            return
+        mode = self.cfg.hotkey.mode
+        tapped = now - self._pressed_at < TAP_SECONDS
+        if mode == "toggle" or (mode == "tap_or_hold" and tapped):
+            self._latched = True  # keep listening until the next press or click
+            return
+        self.stop_recording()
+
+    def click(self) -> None:
+        """On-screen button: click to start listening, click again to stop."""
+        if self.state == RECORDING:
+            self._latched = False
+            self.stop_recording()
+        else:
+            self.start_recording()
+            self._latched = self.state == RECORDING
+
+    def cancel(self) -> None:
+        self._latched = False
+        self.stop_recording(cancel=True)
 
     # --- processing -------------------------------------------------------------
     def _work(self) -> None:
@@ -212,21 +260,17 @@ def run(cfg: Config) -> None:
         before_insert=wait_for_modifiers_released,
     )
 
-    if cfg.hotkey.mode == "hold":
-        on_activate, on_deactivate = dictation.start_recording, dictation.stop_recording
-    else:
-        on_activate, on_deactivate = dictation.toggle, (lambda: None)
     listener = GlobalHotkeyListener(
         cfg.hotkey.combo,
-        on_activate,
-        on_deactivate,
-        on_escape=lambda: dictation.stop_recording(cancel=True),
+        dictation.hotkey_down,
+        dictation.hotkey_up,
+        on_escape=dictation.cancel,
     )
 
     if cfg.ui.overlay:
         from flow.overlay import Overlay
 
-        Overlay(dictation, cfg.hotkey.combo).start()
+        Overlay(dictation, cfg.hotkey.combo, show_button=cfg.ui.button).start()
 
     tray = None
     if cfg.ui.tray:
@@ -245,7 +289,7 @@ def run(cfg: Config) -> None:
             dictation._error(f"Failed to load speech model: {e}")
             return
         listener.start()
-        log.info("Ready. Hold %s and speak (%s mode). Esc cancels.", cfg.hotkey.combo, cfg.hotkey.mode)
+        log.info("Ready. Hotkey %s (%s mode), or click the mic button. Esc cancels.", cfg.hotkey.combo, cfg.hotkey.mode)
 
     if tray is not None:
         # The tray runs its own message loop on a background thread, so the main thread

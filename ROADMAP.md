@@ -22,6 +22,9 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - [x] Dev commands: `transcribe` (with timings / RTF), `clean`, `devices`, `init-config`
 - [x] On-screen status pill (listening + live mic meter, transcribing, ready, errors); never takes focus
 - [x] Paste via native SendInput after physical key release; target app logged; clipboard restored in background
+- [x] Clickable on-screen mic button (doesn't take focus); tap-or-hold hotkey mode (default)
+- [x] Start-menu fix: mask key sent after Windows registers the Win key; Start/Search closed
+      automatically if it still grabbed focus before pasting; our own injected keys ignored
 - [x] Unit tests for rules, LLM stage (fake client + stub server), pipeline, hotkeys, config
 
 ## Next — v0.2 (everyday polish)
@@ -49,10 +52,10 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 
 ## Known bugs / limitations
 
-- **First Windows test (2026-10-10):** transcription worked on CUDA, but the paste did not land in
-  the focused text box. Fix attempt: native SendInput Ctrl+V after physical modifier release,
-  longer clipboard-restore delay, target app now logged ("Pasting into …"). Needs re-test.
-- The overlay is untested on real hardware (Tk not available in the dev sandbox).
+- **Windows tests (2026-10-10):** transcription and overlay work on CUDA. The paste went to
+  `SearchHost.exe`: releasing Ctrl+Win opened Start/Search, which stole focus (the Start-menu
+  mask key was injected from inside the hook callback, too early). Fixed as above; needs re-test.
+- The mic button's click handling is untested on real hardware (Tk not available in the dev sandbox).
 - Clipboard restore only preserves text; images/files on the clipboard are left replaced by the
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Flow (Windows UIPI).
@@ -70,6 +73,7 @@ per-dictation timings in `flow.log`.
 | Date | Hardware | Model / compute | Audio | STT | Cleanup | Insert | Notes |
 |------|----------|-----------------|-------|-----|---------|--------|-------|
 | 2026-10-10 | NVIDIA GPU (user's machine, model TBD) | large-v3-turbo / float16 | 9.6 s | 1081 ms | rules 1 ms | 144 ms* | first real dictation; *insert included the old blocking 120 ms clipboard wait. Model load 94.6 s incl. first download |
+| 2026-10-10 | same | same | 18.5 s | 1245 ms | rules 1 ms | 30 ms | warm load 4.6 s; RTF 0.067 |
 
 Targets (from `AGENTS.md`): STT < 400 ms, rules < 5 ms, local LLM < 600 ms, Haiku < 1 s,
 insert < 150 ms for a 10-second utterance.
