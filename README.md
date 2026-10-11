@@ -81,7 +81,6 @@ mode = "tap_or_hold"      # or "hold" (push-to-talk only) or "toggle"
 
 [cleanup]
 llm = "none"              # "claude" = Claude Haiku polishes your text; "local" = a model on your PC
-claude_api_key = ""       # your Anthropic key, or leave empty to use ANTHROPIC_API_KEY
 
 [stt]
 live_mode = "words"       # "words", "pauses" or "off"
@@ -104,9 +103,9 @@ Any OpenAI-compatible server works. Point `local_url` and `local_model` at it.
 ### AI cleanup with Claude Haiku
 
 1. Get an API key from https://console.anthropic.com.
-2. In `settings.toml`, set `llm = "claude"` and paste the key into `claude_api_key`. (Or leave
-   that empty and set the `ANTHROPIC_API_KEY` environment variable instead.)
-3. Restart Cadence.
+2. Store it in an environment variable, never in a file. In PowerShell, run:
+   `setx ANTHROPIC_API_KEY "sk-ant-..."` (with your real key), then close and reopen PowerShell.
+3. In `settings.toml`, set `llm = "claude"`, then restart Cadence.
 
 Only the transcribed text is sent to Anthropic, never audio. Dictations shorter than
 `min_words_for_llm` words skip Claude. If the API is slow or unreachable, Cadence types the

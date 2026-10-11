@@ -115,7 +115,8 @@ earlier ones are still processing; results are inserted in order.
 - **Config.** Every new option gets a default in `config.py`, a plain-language commented entry
   in `default_config.toml` (a test checks that every option appears there), and validation if
   it's an enum. Users edit `settings.toml` in the project root, created from that template on
-  first run and git-ignored. Never commit a `settings.toml` (it may hold an API key).
+  first run and git-ignored. Secrets (the Claude API key) are never read from settings
+  files, only from environment variables (`ANTHROPIC_API_KEY`); this repo is public.
 - **Claude API.** Use the official `anthropic` SDK. Default model `claude-haiku-5-5`, thinking
   disabled for latency, `max_retries=0` with a short timeout. Check `stop_reason`
   (`refusal`, `max_tokens`) before using the text.

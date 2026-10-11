@@ -28,14 +28,18 @@ mode = "tap_or_hold"
 [cleanup]
 # "none"   = built-in rules only: instant, free, fully offline.
 # "claude" = Claude Haiku polishes each phrase (about a tenth of a cent per dictation).
-#            Needs an API key, below or in the ANTHROPIC_API_KEY environment variable.
+#            Needs your Anthropic API key in an environment variable (see below).
 # "local"  = a model running on your PC (Ollama, LM Studio, llama.cpp). Free and private.
 # With "claude" or "local", text is typed phrase by phrase at pauses instead of word by
 # word, because the AI needs whole phrases.
 llm = "none"
 
-# Your Anthropic API key (starts with sk-ant-). Leave empty to use ANTHROPIC_API_KEY.
-claude_api_key = ""
+# Claude API key: never put it in this file. Cadence reads it only from the
+# ANTHROPIC_API_KEY environment variable, so it can't end up in a file you share or commit.
+# To set it once, run this in PowerShell (with your real key), then close and reopen
+# PowerShell before starting Cadence:
+#     setx ANTHROPIC_API_KEY "sk-ant-..."
+# To remove it later:  reg delete HKCU\Environment /v ANTHROPIC_API_KEY /f
 claude_model = "claude-haiku-5-5"
 
 # For llm = "local": any OpenAI-compatible server.

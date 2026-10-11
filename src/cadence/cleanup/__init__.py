@@ -55,10 +55,10 @@ def build_cleaner(cfg: Config) -> CleanupChain:
 
         from cadence.cleanup.llm import ClaudeCleaner
 
-        if not (c.claude_api_key or os.environ.get("ANTHROPIC_API_KEY")):
+        if not os.environ.get("ANTHROPIC_API_KEY"):
             log.warning(
-                "Claude cleanup is on but no API key is set (cleanup.claude_api_key in "
-                "settings.toml or ANTHROPIC_API_KEY); using rules-only output"
+                "Claude cleanup is on but the ANTHROPIC_API_KEY environment variable isn't set; "
+                "using rules-only output"
             )
-        llm = ClaudeCleaner(c.claude_model, c.timeout_s, api_key=c.claude_api_key, **common)
+        llm = ClaudeCleaner(c.claude_model, c.timeout_s, **common)
     return CleanupChain(rules, llm, c.min_words_for_llm)

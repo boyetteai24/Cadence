@@ -31,7 +31,7 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       behind and stable across two passes, everything at pauses; continuation-aware cleanup
 - [x] Renamed to Cadence (package `cadence`, `python -m cadence`)
 - [x] All settings in one commented `settings.toml` in the project folder (git-ignored, created
-      on first run); Claude API key can be set there
+      on first run). The Claude API key is read only from `ANTHROPIC_API_KEY`, never a file
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
 - [x] Mic button moved by right-click + drag; position remembered across restarts (drag tracks
       the real cursor via Win32 polling, since Tk motion events didn't arrive on Windows)

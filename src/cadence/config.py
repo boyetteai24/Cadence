@@ -75,9 +75,7 @@ class CleanupConfig:
     timeout_s: float = 10.0
     local_url: str = "http://localhost:11434/v1"
     local_model: str = "qwen2.5:3b-instruct"
-    claude_model: str = "claude-haiku-5-5"
-    # Optional; otherwise the ANTHROPIC_API_KEY environment variable is used.
-    claude_api_key: str = ""
+    claude_model: str = "claude-haiku-5-5"  # API key: ANTHROPIC_API_KEY environment variable only
     chunk_words: int = 600  # long dictations are cleaned in chunks of about this size
 
 
