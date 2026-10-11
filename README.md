@@ -72,6 +72,19 @@ in Notepad, or use **tray → Open settings**. Save it, then restart Cadence.
 `settings.toml` is ignored by git, so `git pull` never overwrites your changes. To start over,
 delete the file and it will be recreated with the defaults.
 
+**Change a setting for one run only** by adding it to the start command. `settings.toml`
+stays as it is, and the next normal start uses your saved settings again:
+
+```powershell
+.\.venv\Scripts\python.exe -m cadence --llm claude                  # AI cleanup with Claude
+.\.venv\Scripts\python.exe -m cadence --set stt.lag_words=3          # any setting: section.name=value
+.\.venv\Scripts\python.exe -m cadence -v --llm none --set hotkey.mode=hold --set ui.sounds=false
+```
+
+Put these options right after `-m cadence`. The names are the ones in `settings.toml`: the
+part in `[brackets]`, a dot, then the setting. A misspelled name or a wrong kind of value
+(e.g. text where a number belongs) stops Cadence with a message saying what's wrong.
+
 The options you're most likely to change:
 
 ```toml

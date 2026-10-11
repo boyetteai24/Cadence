@@ -6,6 +6,10 @@
     cadence devices             list microphones
     cadence init-config         write the default settings.toml
     cadence autostart on|off    start Cadence when you sign in to Windows
+
+Any command also takes one-run overrides that leave settings.toml unchanged:
+    cadence --llm claude
+    cadence --set stt.lag_words=3 --set hotkey.mode=hold
 """
 
 from __future__ import annotations
@@ -18,7 +22,7 @@ import time
 from importlib import resources
 from pathlib import Path
 
-from cadence.config import Config, config_dir, default_config_path, load_config
+from cadence.config import Config, apply_overrides, config_dir, default_config_path, load_config
 
 
 def setup_logging(verbose: bool) -> None:
@@ -155,6 +159,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--config", type=Path, help="settings file (default: %(default)s)",
                         default=default_config_path())
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument(
+        "--set", action="append", default=[], metavar="SECTION.NAME=VALUE",
+        help="change a setting for this run only, e.g. --set stt.lag_words=3 (repeatable; "
+             "settings.toml is not changed)",
+    )
+    parser.add_argument(
+        "--llm", choices=["none", "claude", "local"],
+        help="AI cleanup for this run only (same as --set cleanup.llm=...)",
+    )
     sub = parser.add_subparsers(dest="command")
 
     sub.add_parser("run", help="run the dictation app (default)")
@@ -178,6 +191,12 @@ def main(argv: list[str] | None = None) -> int:
         logging.info("Created settings file %s", args.config)
     logging.info("Settings: %s", args.config)
     cfg = load_config(args.config)
+    overrides = args.set + ([f"cleanup.llm={args.llm}"] if args.llm else [])
+    try:
+        for change in apply_overrides(cfg, overrides):
+            logging.info("This run only: %s", change)
+    except ValueError as e:
+        parser.error(str(e))
     handlers = {
         None: cmd_run,
         "run": cmd_run,

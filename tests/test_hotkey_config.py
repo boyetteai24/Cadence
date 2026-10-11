@@ -83,3 +83,35 @@ def test_every_option_is_in_the_settings_template():
         for f in dataclasses.fields(getattr(cfg, section.name)):
             if (section.name, f.name) not in internal:
                 assert f.name in data.get(section.name, {}), f"{section.name}.{f.name} missing"
+
+
+def test_one_run_overrides():
+    from cadence.config import Config, apply_overrides
+
+    cfg = Config()
+    changes = apply_overrides(cfg, ["cleanup.llm=claude", "stt.lag_words=3",
+                                    "stt.pass_interval=1", "ui.sounds=false",
+                                    'hotkey.combo="ctrl+alt+space"', "hotkey.mode=hold"])
+    assert cfg.cleanup.llm == "claude" and cfg.stt.lag_words == 3
+    assert cfg.stt.pass_interval == 1.0 and cfg.ui.sounds is False
+    assert cfg.hotkey.combo == "ctrl+alt+space" and cfg.hotkey.mode == "hold"
+    assert changes[0] == "cleanup.llm = 'claude'"
+
+
+@pytest.mark.parametrize("bad", ["cleanup.llm=gpt", "nope.x=1", "cleanup.nope=1", "llm=claude",
+                                 "stt.lag_words=many", "ui.sounds=yes", "cleanup.llm"])
+def test_bad_overrides_are_rejected(bad):
+    from cadence.config import Config, apply_overrides
+
+    with pytest.raises(ValueError):
+        apply_overrides(Config(), [bad])
+
+
+def test_cli_override_does_not_touch_settings_file(tmp_path, capsys):
+    from cadence.cli import main
+
+    settings = tmp_path / "settings.toml"
+    assert main(["--config", str(settings), "--llm", "none", "--set", "cleanup.remove_fillers=false",
+                 "clean", "um hello"]) == 0
+    assert capsys.readouterr().out.strip() == "Um hello"  # fillers kept: override applied
+    assert "remove_fillers = true" in settings.read_text()  # file still has the default

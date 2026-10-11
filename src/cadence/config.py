@@ -151,6 +151,45 @@ def _apply(obj: Any, data: dict[str, Any], prefix: str = "") -> None:
             setattr(obj, key, value)
 
 
+def _parse_value(raw: str) -> Any:
+    """TOML syntax when it parses (5, 0.4, true, "text", ["a"]), else a plain string, so
+    `--set cleanup.llm=claude` works without quotes."""
+    try:
+        return tomllib.loads(f"v = {raw}")["v"]
+    except tomllib.TOMLDecodeError:
+        return raw
+
+
+def apply_overrides(cfg: Config, overrides: list[str]) -> list[str]:
+    """Apply "section.key=value" settings for this run only (settings.toml is unchanged).
+    Returns a description of each change; raises ValueError with a helpful message."""
+    applied = []
+    for item in overrides:
+        key, sep, raw = item.partition("=")
+        key = key.strip()
+        section_name, dot, name = key.partition(".")
+        section = getattr(cfg, section_name, None) if dot else None
+        if not sep or section is None or not dataclasses.is_dataclass(section) or not any(
+            f.name == name for f in dataclasses.fields(section)
+        ):
+            raise ValueError(
+                f"Unknown setting {item!r}. Use section.name=value with the names from "
+                f"settings.toml, e.g. cleanup.llm=claude or stt.lag_words=3"
+            )
+        value = _parse_value(raw.strip())
+        current = getattr(section, name)
+        if isinstance(current, float) and isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)
+        if current is not None and type(value) is not type(current):
+            raise ValueError(
+                f"{key} expects {type(current).__name__} (like {current!r}), got {raw.strip()!r}"
+            )
+        setattr(section, name, value)
+        applied.append(f"{key} = {value!r}")
+    validate(cfg)
+    return applied
+
+
 def config_from_dict(data: dict[str, Any]) -> Config:
     cfg = Config()
     _apply(cfg, data)
