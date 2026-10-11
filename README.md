@@ -58,10 +58,6 @@ pauses while you talk, so when you stop it only has your last few words left to 
 click where you want the text and press **Ctrl+V**. (Set `restore_clipboard = true` to put
 back what you had copied before instead.)
 
-Prefer to see text while you talk? Set `live_insert = true` under `[output]` (works when you
-tap or click; holding the shortcut always waits until you let go). The trade-off: cleanup and
-the AI can't change words that are already typed.
-
 **Esc** cancels the current recording.
 - **Corrections:** "…at 3pm, no wait, 4pm" → "…at 4pm". "Scratch that" deletes the previous sentence.
 - **Formatting:** say "new line" or "new paragraph".
@@ -81,7 +77,7 @@ stays as it is, and the next normal start uses your saved settings again:
 
 ```powershell
 .\.venv\Scripts\python.exe -m cadence --llm none                    # no AI cleanup this time
-.\.venv\Scripts\python.exe -m cadence --set stt.lag_words=3          # any setting: section.name=value
+.\.venv\Scripts\python.exe -m cadence --set stt.beam_size=1          # any setting: section.name=value
 .\.venv\Scripts\python.exe -m cadence -v --llm none --set hotkey.mode=hold --set ui.sounds=false
 ```
 
@@ -100,13 +96,12 @@ mode = "tap_or_hold"      # or "hold" (push-to-talk only) or "toggle"
 llm = "claude"            # Claude Haiku polishes your text (needs the API key); "none" = rules only
 
 [stt]
-live_mode = "pauses"      # background transcription: "pauses", "words" or "off"
+background = true         # transcribe during your pauses, so the wait at the end is short
 pause_seconds = 0.6       # how long a pause ends a phrase
 beam_size = 5             # accuracy (5) vs. a little speed (1)
 model = "large-v3-turbo"  # "distil-large-v3" is faster; "small.en" runs on weak GPUs/CPU
 
 [output]
-live_insert = false       # true = text appears while you talk
 restore_clipboard = false # false = your dictation stays on the clipboard
 
 [dictionary]
@@ -130,8 +125,7 @@ Any OpenAI-compatible server works. Point `local_url` and `local_model` at it.
 
 Only the transcribed text is sent to Anthropic, never audio. Dictations shorter than
 `min_words_for_llm` words skip Claude. If the API is slow or unreachable, Cadence types the
-rules-cleaned text instead. The AI sees your whole dictation at once (unless you turn on
-`live_insert`, in which case it sees one phrase at a time).
+rules-cleaned text instead. The AI sees your whole dictation at once.
 
 ## Troubleshooting
 

@@ -9,7 +9,7 @@ import time
 
 import numpy as np
 
-from cadence.stt import Transcript, Word
+from cadence.stt import Transcript
 
 log = logging.getLogger(__name__)
 
@@ -106,13 +106,7 @@ class FasterWhisperTranscriber:
         self.active_device = device
         log.info("Whisper ready on %s in %.1fs", device, time.perf_counter() - t0)
 
-    def transcribe(
-        self,
-        audio: np.ndarray,
-        sample_rate: int = 16000,
-        context: str = "",
-        word_timestamps: bool = False,
-    ) -> Transcript:
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, context: str = "") -> Transcript:
         if self._model is None:
             self.load()
         if sample_rate != 16000:
@@ -127,16 +121,9 @@ class FasterWhisperTranscriber:
             initial_prompt=" ".join(p for p in (self.initial_prompt, context[-300:]) if p) or None,
             # Each dictation is independent; conditioning only causes repetition loops.
             condition_on_previous_text=False,
-            without_timestamps=not word_timestamps,
-            word_timestamps=word_timestamps,
+            without_timestamps=True,
         )
-        segments = list(segments)
         text = " ".join(s.text.strip() for s in segments).strip()
         if text.lower() in _HALLUCINATIONS:
-            return Transcript("", info.language, len(audio) / sample_rate)
-        words = [
-            Word(w.word, w.start, w.end)
-            for s in segments
-            for w in (s.words or [])
-        ] if word_timestamps else []
-        return Transcript(text, info.language, len(audio) / sample_rate, words)
+            text = ""
+        return Transcript(text, info.language, len(audio) / sample_rate)

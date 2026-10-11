@@ -37,7 +37,7 @@ mode = "tap_or_hold"
 #            API key is set (see below); without it Cadence quietly uses "none".
 # "none"   = built-in rules only: instant, free, fully offline.
 # "local"  = a model running on your PC (Ollama, LM Studio, llama.cpp). Free and private.
-# The AI sees your whole dictation at once (unless you turn on live typing below).
+# The AI sees your whole dictation at once.
 llm = "claude"
 
 # Claude API key: never put it in this file. Cadence reads it only from the
@@ -62,25 +62,16 @@ voice_commands = true     # say "new line" or "new paragraph"
 
 
 # ---------------------------------------------------------------------------
-#  When text appears, and speech recognition
+#  Speech recognition
 # ---------------------------------------------------------------------------
 [stt]
-# By default nothing is typed until you stop talking; then your whole dictation is cleaned up
-# and pasted at once (like Wispr Flow). To have text appear while you talk, set
-# live_insert = true under [output] further down.
-#
-# Either way, Cadence transcribes in the background while you talk, so there's little left
-# to do when you stop:
-#   "pauses" = transcribe each phrase when you pause (whole phrases: most accurate)
-#   "words"  = transcribe word by word, a few words behind you (faster, a bit less accurate)
-#   "off"    = transcribe everything after you stop (slowest for long dictations)
-live_mode = "pauses"
+# Nothing is typed until you stop talking; then your whole dictation is cleaned up and
+# pasted at once. To keep the wait short, Cadence transcribes each phrase in the background
+# whenever you pause, so when you stop only your last few words are left.
+background = true         # false = transcribe everything after you stop (slower for long dictations)
 pause_seconds = 0.6       # a pause this long counts as the end of a phrase
-min_chunk_seconds = 2.0   # "pauses": shortest phrase transcribed on its own
-lag_words = 5             # "words": how many words behind your voice it stays
-pass_interval = 0.4       # "words": seconds between re-checks (lower = more GPU work)
+min_chunk_seconds = 2.0   # shortest phrase transcribed on its own
 
-# Speech recognition
 model = "large-v3-turbo"  # or "distil-large-v3" (faster), "small.en" (weak GPU/CPU)
 device = "auto"           # auto | cuda | cpu
 compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
@@ -93,11 +84,6 @@ vad_filter = true         # skip silence (also prevents made-up words)
 #  How text is typed
 # ---------------------------------------------------------------------------
 [output]
-# false = type nothing until you stop, then paste the whole cleaned-up dictation (best cleanup).
-# true  = when you tap or click (hands-free), type text while you're still talking.
-#         (Holding the shortcut always waits until you let go.) Corrections and the AI can't
-#         change text that's already been typed.
-live_insert = false
 method = "paste"          # "paste" (recommended) or "type" (types key by key)
 paste_keys = "ctrl+v"     # some terminals need "ctrl+shift+v"
 # false = your dictation stays on the clipboard, so if it didn't land in a text box
