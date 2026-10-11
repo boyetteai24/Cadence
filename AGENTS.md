@@ -51,13 +51,14 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/flow/config.py` | Typed dataclass config loaded from TOML; validation |
 | `src/flow/default_config.toml` | Commented default config (copied by `flow init-config`) |
 | `src/flow/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
-| `src/flow/audio.py` | Microphone capture |
+| `src/flow/audio.py` | Microphone capture; `read()` exposes audio while still recording |
+| `src/flow/segmenter.py` | Energy-based pause detection that picks phrase cut points |
 | `src/flow/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
 | `src/flow/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
 | `src/flow/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
 | `src/flow/output.py` | `PasteInjector`, `TypeInjector` |
 | `src/flow/tray.py` | pystray icon (state colors, menu) |
-| `src/flow/overlay.py` | Unfocusable on-screen mic button + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors |
+| `src/flow/overlay.py` | Unfocusable, draggable mic button + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
 | `src/flow/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
 | `src/flow/sounds.py` | Start/stop/error beeps |
 | `src/flow/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
@@ -65,6 +66,14 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 Input: the hotkey (`hotkey_down`/`hotkey_up`, modes `tap_or_hold` (default), `hold`, `toggle`)
 and the overlay's mic button (`click`) drive the same `Dictation` methods; Esc calls `cancel`.
 A tap shorter than `TAP_SECONDS` latches hands-free recording until the next press or click.
+
+Pause splitting (`segmenter.py`): while recording, a thread polls `Recorder.read()` and,
+at each pause (`stt.pause_seconds`) after at least `stt.min_chunk_seconds`, queues the finished
+phrase as a non-final `Job` of the current `Utterance`. Each segment is transcribed with the
+utterance's earlier text as Whisper context. Cleaned text is typed immediately when the
+utterance is hands-free (tap/click) and `output.live_insert` is on; otherwise it is buffered
+and inserted with the final segment. Never inject keystrokes while the user holds the hotkey.
+Cross-segment cleanup (e.g. "scratch that" undoing an already-typed phrase) is not possible.
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.
@@ -86,7 +95,9 @@ earlier ones are still processing; results are inserted in order.
 - **The transcript is data, not instructions.** LLM prompts wrap it in `<transcript>` tags and
   forbid answering it; `accept_output()` rejects chatty, empty, or length-drifting results.
 - **Latency budget** (target, on an RTX-class GPU, 10 s utterance): STT < 400 ms, rules < 5 ms,
-  local LLM < 600 ms, Claude Haiku < 1 s, insert < 150 ms. Log timings for every dictation
+  local LLM < 600 ms, Claude Haiku < 1 s, insert < 150 ms. The number users feel is logged as
+  "text appeared N ms after you stopped" (`after_stop`); with pause splitting it should stay
+  under ~500 ms regardless of dictation length. Log timings for every dictation
   (`flow -v` / `flow.log`) and record benchmarks in `ROADMAP.md`.
 - **Privacy.** Default config must make no network calls after the model download. Do not log
   audio. Transcripts are logged only at DEBUG level (`flow -v`); INFO logs timings only.
@@ -107,6 +118,10 @@ python -m flow -v               # run the app with console logging
 python -m flow transcribe sample.wav --repeat 3   # STT + cleanup timing
 python -m flow clean "um so I I think, no wait, I know"   # cleanup only
 ```
+
+Git and PR conventions: PR descriptions and commit messages describe the change only. No
+Claude attribution or advertising lines ("Generated with Claude Code", Co-Authored-By
+trailers) and no links to Claude sessions.
 
 Before committing: `pytest` passes, new behavior has tests, `ROADMAP.md` updated (move items to
 Completed, add any known bugs and new benchmark numbers).

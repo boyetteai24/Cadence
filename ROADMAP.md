@@ -25,13 +25,17 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - [x] Clickable on-screen mic button (doesn't take focus); tap-or-hold hotkey mode (default)
 - [x] Start-menu fix: mask key sent after Windows registers the Win key; Start/Search closed
       automatically if it still grabbed focus before pasting; our own injected keys ignored
+- [x] Pause splitting: phrases transcribed at each pause while you talk; typed live when
+      hands-free, buffered while the hotkey is held; earlier text passed as Whisper context
+- [x] "Text appeared N ms after you stopped" latency logged per dictation
+- [x] Draggable mic button; position remembered across restarts
 - [x] Unit tests for rules, LLM stage (fake client + stub server), pipeline, hotkeys, config
 
 ## Next — v0.2 (everyday polish)
 
 - [ ] **Validate on target hardware** (Windows 11 + NVIDIA GPU): run the full app, fill in the
       benchmark table below, tune defaults (`paste_delay_ms`, `beam_size`, model choice)
-- [ ] Live preview of words in the overlay while speaking; transcribe during pauses so the final paste is near-instant
+- [ ] Live preview of the current (not yet finished) phrase in the overlay
 - [ ] App-aware behavior: detect the foreground app (e.g. terminals use `ctrl+shift+v`;
       code editors skip trailing punctuation; chat apps casual tone)
 - [ ] Exclude dictation from Windows clipboard history (`ExcludeClipboardContentFromMonitorProcessing`)
@@ -41,8 +45,6 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 
 ## Later — v0.3+
 
-- [ ] Streaming transcription while speaking (process completed VAD segments early) to cut
-      end-of-speech latency on long dictations
 - [ ] Command mode: select text, hold a second hotkey, say "make this more formal"
 - [ ] Personal dictionary learned from corrections; snippets ("insert my address")
 - [ ] Optional local history with search (opt-in, stored locally)
@@ -60,6 +62,10 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Flow (Windows UIPI).
   Run Flow elevated if you need to dictate into elevated apps.
+- Live insertion types each phrase separately, so "scratch that" or a correction can only fix
+  text within the current phrase, and the optional LLM sees one phrase at a time.
+- Pause splitting has only been tested with simulated audio; `pause_seconds` and
+  `min_chunk_seconds` may need tuning on real speech.
 - `type` output mode sends newlines as Enter, which submits messages in chat apps.
 - Rules-only mode handles corrections only with explicit markers and short replacements
   (≤3 words); everything else needs the LLM stage.

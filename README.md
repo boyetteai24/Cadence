@@ -45,8 +45,15 @@ There are three ways to dictate:
 - **Tap `Ctrl+Win`** once and talk hands-free. Tap again to finish.
 - **Click the mic button** just above the taskbar, talk, then click the "Listening" pill to
   finish. Clicking it doesn't move your cursor, so the text still goes where you were typing.
+  **Drag** the button to move it; Flow remembers where you put it.
 
-**Esc** cancels the current recording.
+**When you tap or click, text appears as you talk.** Each time you pause briefly (about
+0.6 s), the phrase you just said is typed in while you carry on. When you hold the
+shortcut, phrases are still transcribed during your pauses, but the text waits until you let
+go (typing while keys are held would trigger shortcuts). Either way, the wait after you stop
+is only for your last phrase.
+
+**Esc** cancels the current recording. Phrases that were already typed stay.
 - **Corrections:** "…at 3pm, no wait, 4pm" → "…at 4pm". "Scratch that" deletes the previous sentence.
 - **Formatting:** say "new line" or "new paragraph".
 - If text didn't land where you wanted it, use **tray → Copy last dictation**.

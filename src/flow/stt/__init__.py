@@ -22,8 +22,8 @@ class Transcriber(Protocol):
         """Load the model (slow). Called once at start-up."""
         ...
 
-    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> Transcript:
-        """audio: mono float32 in [-1, 1]."""
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000, context: str = "") -> Transcript:
+        """audio: mono float32 in [-1, 1]. context: preceding text of the same dictation."""
         ...
 
 

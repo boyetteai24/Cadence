@@ -26,3 +26,14 @@ def test_errors_take_priority_then_expire():
 def test_idle_shows_mic_button_unless_disabled():
     assert view(IDLE).kind == "button"
     assert compute_view(IDLE, 100.0, None, None, "Ctrl + Win", show_button=False).kind == "hidden"
+
+
+def test_button_position_is_remembered(tmp_path, monkeypatch):
+    from flow import overlay
+
+    monkeypatch.setattr(overlay, "_state_file", lambda: tmp_path / "overlay.json")
+    assert overlay.load_position() is None
+    overlay.save_position(120, -40)  # negative: a monitor left of the primary one
+    assert overlay.load_position() == (120, -40)
+    (tmp_path / "overlay.json").write_text("garbage")
+    assert overlay.load_position() is None

@@ -34,6 +34,27 @@ class Result:
     skipped: str | None = None  # reason, if nothing was inserted
 
 
+@dataclass
+class Utterance:
+    """One dictation (press to release, or click to click). With pause splitting it is
+    processed as several segments; `result` accumulates across them."""
+
+    hands_free: bool = False  # True once the user isn't holding keys: safe to type live
+    cancelled: bool = False
+    segments: int = 0
+    buffered: list[str] = field(default_factory=list)  # cleaned text not yet inserted
+    context: str = ""  # recent raw transcript, given to Whisper for continuity
+    stopped_at: float | None = None  # when the user finished speaking
+    result: Result = field(default_factory=Result)
+
+
+@dataclass
+class Job:
+    audio: np.ndarray
+    utterance: Utterance
+    final: bool
+
+
 class Dictation:
     def __init__(
         self,
@@ -54,13 +75,15 @@ class Dictation:
         self.last_result: Result | None = None
         self.listeners: list[Callable[[str], None]] = []
         self.error_listeners: list[Callable[[str], None]] = []
-        self._jobs: queue.Queue[np.ndarray | None] = queue.Queue()
+        self._jobs: queue.Queue[Job | None] = queue.Queue()
         self._pending = 0
         self._lock = threading.Lock()
         self._worker = threading.Thread(target=self._work, name="flow-worker", daemon=True)
         self._pressed_at = 0.0
         self._latched = False  # recording continues after the shortcut is released
         self._ignore_next_up = False
+        self._utterance = Utterance()
+        self._cut = 0  # samples of the current recording already handed to the worker
 
     # --- state ---------------------------------------------------------------
     def _set_state(self, state: str) -> None:
@@ -103,7 +126,13 @@ class Dictation:
             except Exception as e:
                 self._error(f"Could not open microphone: {e}")
                 return
+            self._utterance = Utterance()
+            self._cut = 0
             self._set_state(RECORDING)
+        if self.cfg.stt.pause_split and hasattr(self.recorder, "read"):
+            threading.Thread(
+                target=self._split_on_pauses, args=(self._utterance,), daemon=True
+            ).start()
         if self.cfg.ui.sounds:
             sounds.start()
 
@@ -112,15 +141,44 @@ class Dictation:
             if self.state != RECORDING:
                 return
             audio = self.recorder.stop()
+            utterance = self._utterance
             if cancel:
                 log.info("Recording cancelled")
+                utterance.cancelled = True  # drops queued segments and buffered text
                 self._set_state(PROCESSING if self._pending else IDLE)
                 return
+            utterance.stopped_at = time.perf_counter()
             self._pending += 1
             self._set_state(PROCESSING)
+            self._jobs.put(Job(audio[self._cut:], utterance, final=True))
         if self.cfg.ui.sounds:
             sounds.stop()
-        self._jobs.put(audio)
+
+    def _split_on_pauses(self, utterance: Utterance) -> None:
+        """While recording, hand each finished phrase to the worker at the next pause, so
+        it's transcribed while the user keeps talking (and typed live when hands-free)."""
+        from flow.segmenter import find_pause_cut
+
+        sr = self.cfg.audio.sample_rate
+        while True:
+            time.sleep(0.15)
+            with self._lock:
+                if self.state != RECORDING or self._utterance is not utterance:
+                    return
+                audio = self.recorder.read(self._cut)
+                cut = find_pause_cut(
+                    audio, sr, self.cfg.stt.pause_seconds, self.cfg.stt.min_chunk_seconds
+                )
+                if cut is None:
+                    continue
+                self._cut += cut
+                self._pending += 1
+                self._jobs.put(Job(audio[:cut], utterance, final=False))
+
+    def _set_latched(self, latched: bool) -> None:
+        self._latched = latched
+        if latched:
+            self._utterance.hands_free = True
 
     def toggle(self) -> None:
         if self.state == RECORDING:
@@ -154,7 +212,7 @@ class Dictation:
         mode = self.cfg.hotkey.mode
         tapped = now - self._pressed_at < TAP_SECONDS
         if mode == "toggle" or (mode == "tap_or_hold" and tapped):
-            self._latched = True  # keep listening until the next press or click
+            self._set_latched(True)  # keep listening until the next press or click
             return
         self.stop_recording()
 
@@ -165,7 +223,7 @@ class Dictation:
             self.stop_recording()
         else:
             self.start_recording()
-            self._latched = self.state == RECORDING
+            self._set_latched(self.state == RECORDING)
 
     def cancel(self) -> None:
         self._latched = False
@@ -174,11 +232,11 @@ class Dictation:
     # --- processing -------------------------------------------------------------
     def _work(self) -> None:
         while True:
-            audio = self._jobs.get()
-            if audio is None:
+            job = self._jobs.get()
+            if job is None:
                 return
             try:
-                self.process(audio)
+                self._process_job(job)
             except Exception as e:
                 log.exception("Dictation failed")
                 self._error(f"Dictation failed: {e}")
@@ -189,50 +247,91 @@ class Dictation:
                         self._set_state(PROCESSING if self._pending else IDLE)
 
     def process(self, audio: np.ndarray) -> Result:
-        """Synchronous pipeline for one recording. Utterances are processed in order."""
-        sr = self.cfg.audio.sample_rate
-        result = Result(audio_seconds=len(audio) / sr)
-        self.last_result = result
-        if result.audio_seconds < self.cfg.audio.min_seconds:
-            result.skipped = "too short"
-            return result
-        if float(np.max(np.abs(audio))) < self.cfg.audio.min_peak:
-            result.skipped = "silence"
-            return result
+        """Process one complete recording synchronously (single segment)."""
+        utterance = Utterance()
+        self._process_job(Job(audio, utterance, final=True))
+        return utterance.result
 
-        t0 = time.perf_counter()
-        transcript = self.transcriber.transcribe(audio, sr)
-        result.timings["stt"] = time.perf_counter() - t0
-        result.raw = transcript.text
-        if not transcript.text.strip():
-            result.skipped = "no speech"
-            return result
+    def _process_job(self, job: Job) -> None:
+        """Transcribe + clean one segment, then insert it now or buffer it.
 
-        t0 = time.perf_counter()
-        text = self.cleaner.clean(transcript.text)
-        result.timings["cleanup"] = time.perf_counter() - t0
-        result.timings.update(
-            {f"cleanup.{k}": v for k, v in getattr(self.cleaner, "last_timings", {}).items()}
-        )
-        if not text:
-            result.skipped = "empty after cleanup"
-            return result
-        if self.cfg.output.trailing_space and not text.endswith(("\n", " ")):
-            text += " "
-        result.text = text
-
+        Segments of one utterance arrive in order. Text is inserted as soon as it's safe:
+        immediately when hands-free (nobody is holding modifier keys), otherwise when the
+        final segment arrives.
+        """
+        u = job.utterance
+        if u.cancelled:
+            return
+        u.segments += 1
+        self.last_result = u.result
+        text = self._transcribe_and_clean(job.audio, u, alone=job.final and u.segments == 1)
+        if text:
+            u.buffered.append(text)
+        if not (job.final or (u.hands_free and self.cfg.output.live_insert)):
+            return
+        out, u.buffered = "".join(u.buffered), []
+        if not out or u.cancelled:
+            return
         if self.before_insert:
             self.before_insert()
         t0 = time.perf_counter()
-        self.injector.insert(text)
-        result.timings["insert"] = time.perf_counter() - t0
-        log.info(
-            "Dictated %.1fs audio | %s",
-            result.audio_seconds,
-            " ".join(f"{k}={v * 1000:.0f}ms" for k, v in result.timings.items()),
+        self.injector.insert(out)
+        u.result.timings["insert"] = time.perf_counter() - t0
+        u.result.text += out
+        u.result.skipped = None
+        if job.final and u.stopped_at is not None:
+            # The latency the user feels: from finishing speaking to text appearing.
+            u.result.timings["after_stop"] = time.perf_counter() - u.stopped_at
+            log.info(
+                "Dictated %.1fs audio in %d segment(s) | text appeared %.0fms after you stopped",
+                u.result.audio_seconds, u.segments, u.result.timings["after_stop"] * 1000,
+            )
+
+    def _transcribe_and_clean(self, audio: np.ndarray, u: Utterance, alone: bool) -> str:
+        sr = self.cfg.audio.sample_rate
+        result = u.result
+        seconds = len(audio) / sr
+        result.audio_seconds += seconds
+        # The short-tap guard only applies to a whole recording, not a trailing segment.
+        if alone and seconds < self.cfg.audio.min_seconds:
+            result.skipped = "too short"
+            return ""
+        if len(audio) == 0 or float(np.max(np.abs(audio))) < self.cfg.audio.min_peak:
+            result.skipped = result.skipped or "silence"
+            return ""
+
+        timings: dict[str, float] = {}
+        t0 = time.perf_counter()
+        transcript = self.transcriber.transcribe(audio, sr, context=u.context)
+        timings["stt"] = time.perf_counter() - t0
+        raw = transcript.text.strip()
+        if not raw:
+            result.skipped = result.skipped or "no speech"
+            return ""
+        result.raw = f"{result.raw} {raw}".strip()
+        u.context = result.raw[-400:]
+
+        t0 = time.perf_counter()
+        text = self.cleaner.clean(raw)
+        timings["cleanup"] = time.perf_counter() - t0
+        timings.update(
+            {f"cleanup.{k}": v for k, v in getattr(self.cleaner, "last_timings", {}).items()}
         )
-        log.debug("raw=%r clean=%r", result.raw, text)
-        return result
+        for k, v in timings.items():
+            result.timings[k] = result.timings.get(k, 0.0) + v
+        log.info(
+            "Segment %d: %.1fs audio | %s",
+            u.segments,
+            seconds,
+            " ".join(f"{k}={v * 1000:.0f}ms" for k, v in timings.items()),
+        )
+        log.debug("raw=%r clean=%r", raw, text)
+        if not text:
+            result.skipped = result.skipped or "empty after cleanup"
+            return ""
+        if self.cfg.output.trailing_space and not text.endswith(("\n", " ")):
+            text += " "
+        return text
 
 
 def run(cfg: Config) -> None:
