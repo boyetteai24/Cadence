@@ -15,8 +15,8 @@ from typing import Callable
 
 import numpy as np
 
-from flow import sounds
-from flow.config import Config
+from cadence import sounds
+from cadence.config import Config
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +79,7 @@ class Dictation:
         self._jobs: queue.Queue[Job | None] = queue.Queue()
         self._pending = 0
         self._lock = threading.Lock()
-        self._worker = threading.Thread(target=self._work, name="flow-worker", daemon=True)
+        self._worker = threading.Thread(target=self._work, name="cadence-worker", daemon=True)
         self._pressed_at = 0.0
         self._latched = False  # recording continues after the shortcut is released
         self._ignore_next_up = False
@@ -165,8 +165,8 @@ class Dictation:
         """While recording, re-transcribe the not-yet-typed audio every pass_interval and
         commit words that are lag_words behind and stable across two passes (all words at
         a pause). See streaming.py. Audio before the last committed word is dropped."""
-        from flow import streaming
-        from flow.segmenter import speech_bounds
+        from cadence import streaming
+        from cadence.segmenter import speech_bounds
 
         sr = self.cfg.audio.sample_rate
         stt = self.cfg.stt
@@ -206,7 +206,7 @@ class Dictation:
     def _split_on_pauses(self, utterance: Utterance) -> None:
         """While recording, hand each finished phrase to the worker at the next pause, so
         it's transcribed while the user keeps talking (and typed live when hands-free)."""
-        from flow.segmenter import find_pause_cut
+        from cadence.segmenter import find_pause_cut
 
         sr = self.cfg.audio.sample_rate
         while True:
@@ -391,14 +391,14 @@ class Dictation:
 
 def run(cfg: Config) -> None:
     """Wire real components together and run until quit."""
-    from flow import __version__
+    from cadence import __version__
 
-    log.info("Flow %s starting", __version__)
-    from flow.audio import Recorder
-    from flow.cleanup import build_cleaner
-    from flow.hotkey import GlobalHotkeyListener
-    from flow.output import build_injector
-    from flow.stt import build_transcriber
+    log.info("Cadence %s starting", __version__)
+    from cadence.audio import Recorder
+    from cadence.cleanup import build_cleaner
+    from cadence.hotkey import GlobalHotkeyListener
+    from cadence.output import build_injector
+    from cadence.stt import build_transcriber
 
     listener: GlobalHotkeyListener | None = None
 
@@ -425,14 +425,14 @@ def run(cfg: Config) -> None:
     )
 
     if cfg.ui.overlay:
-        from flow.overlay import Overlay
+        from cadence.overlay import Overlay
 
         Overlay(dictation, cfg.hotkey.combo, show_button=cfg.ui.button).start()
 
     tray = None
     if cfg.ui.tray:
         try:
-            from flow.tray import Tray
+            from cadence.tray import Tray
 
             tray = Tray(dictation, cfg)
         except ImportError:

@@ -1,6 +1,6 @@
 import pytest
 
-from flow.cleanup.rules import RuleCleaner
+from cadence.cleanup.rules import RuleCleaner
 
 clean = RuleCleaner(replacements={"claude code": "Claude Code"}).clean
 

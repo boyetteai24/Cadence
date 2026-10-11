@@ -36,7 +36,7 @@ class PasteInjector:
 
     def _press_paste(self) -> None:
         if sys.platform == "win32":
-            from flow import win32
+            from cadence import win32
 
             if not win32.wait_for_modifiers_released():
                 log.warning("Modifier keys still held; pasting anyway")

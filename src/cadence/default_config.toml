@@ -1,0 +1,120 @@
+# ============================================================================
+#  Cadence settings
+# ============================================================================
+#  Edit this file, save it, then restart Cadence (tray icon > Quit, then start it again).
+#  This file is yours: git ignores it, so `git pull` never overwrites your changes.
+#  Delete a line to go back to its default. Delete the whole file to start fresh.
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+#  Shortcut
+# ---------------------------------------------------------------------------
+[hotkey]
+# Keys joined by "+": ctrl, alt, shift, win (either side) or ctrl_r, alt_l, ...,
+# space, f1..f24, or a single letter. Examples: "ctrl+win", "ctrl_r", "f9".
+combo = "ctrl+win"
+
+# "tap_or_hold" = hold to talk, OR tap once to talk hands-free and tap again to stop.
+# "hold"        = push-to-talk only.
+# "toggle"      = press to start, press again to stop.
+# Esc always cancels.
+mode = "tap_or_hold"
+
+
+# ---------------------------------------------------------------------------
+#  AI cleanup (grammar polish after the built-in rules)
+# ---------------------------------------------------------------------------
+[cleanup]
+# "none"   = built-in rules only: instant, free, fully offline.
+# "claude" = Claude Haiku polishes each phrase (about a tenth of a cent per dictation).
+#            Needs an API key, below or in the ANTHROPIC_API_KEY environment variable.
+# "local"  = a model running on your PC (Ollama, LM Studio, llama.cpp). Free and private.
+# With "claude" or "local", text is typed phrase by phrase at pauses instead of word by
+# word, because the AI needs whole phrases.
+llm = "none"
+
+# Your Anthropic API key (starts with sk-ant-). Leave empty to use ANTHROPIC_API_KEY.
+claude_api_key = ""
+claude_model = "claude-haiku-5-5"
+
+# For llm = "local": any OpenAI-compatible server.
+# Ollama uses port 11434, LM Studio 1234, llama.cpp 8080.
+local_url = "http://localhost:11434/v1"
+local_model = "qwen2.5:3b-instruct"
+
+min_words_for_llm = 4     # shorter dictations skip the AI (it's not worth the wait)
+timeout_s = 10.0          # if the AI takes longer, the rules-only text is used
+chunk_words = 600         # very long dictations are sent to the AI in pieces this size
+
+remove_fillers = true     # drop "um", "uh", stutters and repeated words
+voice_commands = true     # say "new line" or "new paragraph"
+
+
+# ---------------------------------------------------------------------------
+#  Live typing (text appears while you talk)
+# ---------------------------------------------------------------------------
+[stt]
+# "words"  = each word is typed once you're lag_words words past it, and
+#            everything is typed whenever you pause.
+# "pauses" = each phrase is typed when you pause.
+# "off"    = everything is typed after you stop.
+live_mode = "words"
+lag_words = 5             # lower = text follows your voice more closely, but a "no wait"
+                          # can only fix words that haven't been typed yet
+pass_interval = 0.4       # seconds between re-checks (lower = snappier, more GPU work)
+pause_seconds = 0.6       # a pause this long counts as the end of a phrase
+min_chunk_seconds = 2.0   # "pauses" mode: shortest phrase that's typed on its own
+
+# Speech recognition
+model = "large-v3-turbo"  # or "distil-large-v3" (faster), "small.en" (weak GPU/CPU)
+device = "auto"           # auto | cuda | cpu
+compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
+language = "en"           # "" = detect automatically (slightly slower)
+beam_size = 1             # 5 = slightly more accurate, a bit slower
+vad_filter = true         # skip silence (also prevents made-up words)
+
+
+# ---------------------------------------------------------------------------
+#  How text is typed
+# ---------------------------------------------------------------------------
+[output]
+# When you tap or click (hands-free), type text while you're still talking.
+# When you hold the shortcut, text always waits until you let go.
+live_insert = true
+method = "paste"          # "paste" (recommended) or "type" (types key by key)
+paste_keys = "ctrl+v"     # some terminals need "ctrl+shift+v"
+restore_clipboard = true  # put back what was on your clipboard afterwards
+paste_delay_ms = 400      # wait before restoring the clipboard (doesn't slow typing)
+trailing_space = true     # add a space so the next dictation doesn't run on
+
+
+# ---------------------------------------------------------------------------
+#  On-screen
+# ---------------------------------------------------------------------------
+[ui]
+button = true             # mic button: left-click to dictate, right-click + drag to move
+overlay = true            # "Listening" / "Transcribing" pill (the button needs this on)
+tray = true               # icon by the clock, with a menu
+sounds = true             # beeps when listening starts and stops
+
+
+# ---------------------------------------------------------------------------
+#  Microphone
+# ---------------------------------------------------------------------------
+[audio]
+# device = 1              # a number from `python -m cadence devices`; omit = Windows default
+keep_stream_open = false  # true = starts a little faster, but Windows shows the mic as in use
+min_seconds = 0.3         # shorter recordings are treated as accidental taps
+
+
+# ---------------------------------------------------------------------------
+#  Your words
+# ---------------------------------------------------------------------------
+[dictionary]
+# Names and jargon to spell correctly, e.g. ["Cadence", "Kubernetes", "Anthropic"]
+words = []
+
+# Replace a spoken phrase with something else (case-insensitive, whole words):
+[dictionary.replacements]
+# "my email" = "me@example.com"

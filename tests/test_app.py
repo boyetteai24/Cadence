@@ -2,11 +2,11 @@ import time
 
 import numpy as np
 
-from flow.app import IDLE, Dictation
-from flow.cleanup import CleanupChain
-from flow.cleanup.rules import RuleCleaner
-from flow.config import Config
-from flow.stt import Transcript
+from cadence.app import IDLE, Dictation
+from cadence.cleanup import CleanupChain
+from cadence.cleanup.rules import RuleCleaner
+from cadence.config import Config
+from cadence.stt import Transcript
 
 
 class FakeRecorder:

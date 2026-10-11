@@ -9,7 +9,7 @@ import time
 
 import numpy as np
 
-from flow.stt import Transcript, Word
+from cadence.stt import Transcript, Word
 
 log = logging.getLogger(__name__)
 

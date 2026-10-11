@@ -7,7 +7,7 @@ from typing import Protocol
 
 import numpy as np
 
-from flow.config import Config
+from cadence.config import Config
 
 
 @dataclass
@@ -44,7 +44,7 @@ class Transcriber(Protocol):
 
 def build_transcriber(cfg: Config) -> Transcriber:
     if cfg.stt.backend == "faster-whisper":
-        from flow.stt.whisper import FasterWhisperTranscriber
+        from cadence.stt.whisper import FasterWhisperTranscriber
 
         return FasterWhisperTranscriber(
             model=cfg.stt.model,

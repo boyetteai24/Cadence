@@ -1,6 +1,6 @@
-# AGENTS.md — Flow development guide
+# AGENTS.md — Cadence development guide
 
-This is the master specification for Flow. Read it before changing code, and keep it current
+This is the master specification for Cadence. Read it before changing code, and keep it current
 when requirements or architecture change. Track progress in `ROADMAP.md`.
 
 ## Product goal
@@ -48,21 +48,22 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 
 | Path | Responsibility |
 |------|----------------|
-| `src/flow/config.py` | Typed dataclass config loaded from TOML; validation |
-| `src/flow/default_config.toml` | Commented default config (copied by `flow init-config`) |
-| `src/flow/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
-| `src/flow/audio.py` | Microphone capture; `read()` exposes audio while still recording |
-| `src/flow/segmenter.py` | Energy-based pause detection: phrase cut points, trailing silence |
-| `src/flow/streaming.py` | Local-agreement word commit logic for live word-by-word typing |
-| `src/flow/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
-| `src/flow/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
-| `src/flow/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
-| `src/flow/output.py` | `PasteInjector`, `TypeInjector` |
-| `src/flow/tray.py` | pystray icon (state colors, menu) |
-| `src/flow/overlay.py` | Unfocusable mic button (left-click dictates, right-drag moves) + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
-| `src/flow/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
-| `src/flow/sounds.py` | Start/stop/error beeps |
-| `src/flow/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
+| `src/cadence/config.py` | Typed dataclass config loaded from TOML; validation |
+| `src/cadence/default_config.toml` | Commented template for the user's `settings.toml` (copied on first run) |
+| `settings.toml` (project root, git-ignored) | The user's settings; `config.default_config_path()` |
+| `src/cadence/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
+| `src/cadence/audio.py` | Microphone capture; `read()` exposes audio while still recording |
+| `src/cadence/segmenter.py` | Energy-based pause detection: phrase cut points, trailing silence |
+| `src/cadence/streaming.py` | Local-agreement word commit logic for live word-by-word typing |
+| `src/cadence/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
+| `src/cadence/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
+| `src/cadence/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
+| `src/cadence/output.py` | `PasteInjector`, `TypeInjector` |
+| `src/cadence/tray.py` | pystray icon (state colors, menu) |
+| `src/cadence/overlay.py` | Unfocusable mic button (left-click dictates, right-drag moves) + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
+| `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
+| `src/cadence/sounds.py` | Start/stop/error beeps |
+| `src/cadence/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
 
 Input: the hotkey (`hotkey_down`/`hotkey_up`, modes `tap_or_hold` (default), `hold`, `toggle`)
 and the overlay's mic button (`click`) drive the same `Dictation` methods; Esc calls `cancel`.
@@ -107,12 +108,14 @@ earlier ones are still processing; results are inserted in order.
   local LLM < 600 ms, Claude Haiku < 1 s, insert < 150 ms. The number users feel is logged as
   "text appeared N ms after you stopped" (`after_stop`); with pause splitting it should stay
   under ~500 ms regardless of dictation length. Log timings for every dictation
-  (`flow -v` / `flow.log`) and record benchmarks in `ROADMAP.md`.
+  (`cadence -v` / `cadence.log`) and record benchmarks in `ROADMAP.md`.
 - **Privacy.** Default config must make no network calls after the model download. Do not log
-  audio. Transcripts are logged only at DEBUG level (`flow -v`); INFO logs timings only.
+  audio. Transcripts are logged only at DEBUG level (`cadence -v`); INFO logs timings only.
 - **No word limits.** Don't add caps on recording length or text length; chunk instead.
-- **Config.** Every new option gets a default in `config.py`, a commented entry in
-  `default_config.toml`, and validation if it's an enum.
+- **Config.** Every new option gets a default in `config.py`, a plain-language commented entry
+  in `default_config.toml` (a test checks that every option appears there), and validation if
+  it's an enum. Users edit `settings.toml` in the project root, created from that template on
+  first run and git-ignored. Never commit a `settings.toml` (it may hold an API key).
 - **Claude API.** Use the official `anthropic` SDK. Default model `claude-haiku-5-5`, thinking
   disabled for latency, `max_retries=0` with a short timeout. Check `stop_reason`
   (`refusal`, `max_tokens`) before using the text.
@@ -123,9 +126,9 @@ earlier ones are still processing; results are inserted in order.
 py -3 -m venv .venv; .\.venv\Scripts\activate
 pip install -e ".[all,dev]"
 pytest                          # unit tests; run on any OS, no GPU or mic needed
-python -m flow -v               # run the app with console logging
-python -m flow transcribe sample.wav --repeat 3   # STT + cleanup timing
-python -m flow clean "um so I I think, no wait, I know"   # cleanup only
+python -m cadence -v               # run the app with console logging
+python -m cadence transcribe sample.wav --repeat 3   # STT + cleanup timing
+python -m cadence clean "um so I I think, no wait, I know"   # cleanup only
 ```
 
 Git and PR conventions: PR descriptions and commit messages describe the change only. No

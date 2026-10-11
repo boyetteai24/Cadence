@@ -1,7 +1,10 @@
-"""Configuration: typed dataclasses loaded from a TOML file.
+"""Configuration: typed dataclasses loaded from `settings.toml`.
 
-Location: %APPDATA%\\Flow\\config.toml on Windows, ~/.config/flow/config.toml elsewhere.
-Every field has a default, so an empty or missing file is valid.
+The settings file lives in the project folder (next to README.md) when Cadence runs from a
+source checkout, so it's easy to find; it is git-ignored, so `git pull` never touches it.
+Installed without a checkout, it lives in %APPDATA%\\Cadence (Windows) or ~/.config/cadence.
+It is created from default_config.toml on first run. Every field has a default, so missing
+lines are fine.
 """
 
 from __future__ import annotations
@@ -73,6 +76,8 @@ class CleanupConfig:
     local_url: str = "http://localhost:11434/v1"
     local_model: str = "qwen2.5:3b-instruct"
     claude_model: str = "claude-haiku-5-5"
+    # Optional; otherwise the ANTHROPIC_API_KEY environment variable is used.
+    claude_api_key: str = ""
     chunk_words: int = 600  # long dictations are cleaned in chunks of about this size
 
 
@@ -118,12 +123,19 @@ class Config:
 def config_dir() -> Path:
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "Flow"
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "flow"
+        return base / "Cadence"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cadence"
+
+
+def project_root() -> Path | None:
+    """The source checkout this package runs from (where pyproject.toml is), if any."""
+    root = Path(__file__).resolve().parents[2]
+    return root if (root / "pyproject.toml").is_file() else None
 
 
 def default_config_path() -> Path:
-    return config_dir() / "config.toml"
+    root = project_root()
+    return (root if root else config_dir()) / "settings.toml"
 
 
 def _apply(obj: Any, data: dict[str, Any], prefix: str = "") -> None:

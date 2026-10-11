@@ -11,9 +11,9 @@ import threading
 import pystray
 from PIL import Image, ImageDraw
 
-from flow.app import IDLE, LOADING, PROCESSING, RECORDING, Dictation
-from flow.cleanup import build_cleaner
-from flow.config import Config, default_config_path
+from cadence.app import IDLE, LOADING, PROCESSING, RECORDING, Dictation
+from cadence.cleanup import build_cleaner
+from cadence.config import Config, default_config_path
 
 log = logging.getLogger(__name__)
 
@@ -54,7 +54,7 @@ class Tray:
         self.dictation = dictation
         self.cfg = cfg
         self._images = {state: _icon_image(c) for state, c in _COLORS.items()}
-        self.icon = pystray.Icon("Flow", self._images[LOADING], "Flow", menu=self._menu())
+        self.icon = pystray.Icon("Cadence", self._images[LOADING], "Cadence", menu=self._menu())
         self.stopped = threading.Event()
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
@@ -69,7 +69,7 @@ class Tray:
             )
 
         return pystray.Menu(
-            pystray.MenuItem(lambda _: f"Flow: {_LABELS[self.dictation.state]}", None, enabled=False),
+            pystray.MenuItem(lambda _: f"Cadence: {_LABELS[self.dictation.state]}", None, enabled=False),
             pystray.MenuItem(f"Hotkey: {self.cfg.hotkey.combo} ({self.cfg.hotkey.mode})", None, enabled=False),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Copy last dictation", self._copy_last),
@@ -81,18 +81,18 @@ class Tray:
                     llm_item("Claude Haiku", "claude"),
                 ),
             ),
-            pystray.MenuItem("Open config file", lambda: self._open_config()),
+            pystray.MenuItem("Open settings", lambda: self._open_config()),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Quit", lambda: self.stop()),
         )
 
     def _on_state(self, state: str) -> None:
         self.icon.icon = self._images.get(state, self._images[IDLE])
-        self.icon.title = f"Flow: {_LABELS.get(state, state)}"
+        self.icon.title = f"Cadence: {_LABELS.get(state, state)}"
 
     def _on_error(self, message: str) -> None:
         try:
-            self.icon.notify(message, "Flow")
+            self.icon.notify(message, "Cadence")
         except Exception:
             pass
 
@@ -112,7 +112,7 @@ class Tray:
     def _open_config(self) -> None:
         path = default_config_path()
         if not path.exists():
-            from flow.cli import write_default_config
+            from cadence.cli import write_default_config
 
             write_default_config(path)
         _open_path(path)

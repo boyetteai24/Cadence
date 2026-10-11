@@ -142,14 +142,17 @@ class LocalLlmCleaner(LlmCleaner):
 
 
 class ClaudeCleaner(LlmCleaner):
-    """Claude Haiku via the Anthropic SDK. Reads ANTHROPIC_API_KEY from the environment."""
+    """Claude Haiku via the Anthropic SDK. Uses cleanup.claude_api_key from settings.toml if
+    set, else the ANTHROPIC_API_KEY environment variable."""
 
     name = "claude"
 
-    def __init__(self, model: str = "claude-haiku-5-5", timeout_s: float = 10.0, client=None, **kw):
+    def __init__(self, model: str = "claude-haiku-5-5", timeout_s: float = 10.0, client=None,
+                 api_key: str = "", **kw):
         super().__init__(**kw)
         self.model = model
         self.timeout_s = timeout_s
+        self.api_key = api_key  # empty: the SDK reads ANTHROPIC_API_KEY
         self._client = client
 
     @property
@@ -158,7 +161,9 @@ class ClaudeCleaner(LlmCleaner):
             import anthropic
 
             # No retries: a slow cleanup is worse than falling back to rule output.
-            self._client = anthropic.Anthropic(timeout=self.timeout_s, max_retries=0)
+            self._client = anthropic.Anthropic(
+                api_key=self.api_key or None, timeout=self.timeout_s, max_retries=0
+            )
         return self._client
 
     def _complete(self, user_message: str, max_tokens: int) -> str:

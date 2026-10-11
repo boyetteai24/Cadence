@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from flow.config import config_from_dict, load_config
-from flow.hotkey import HotkeyMatcher
+from cadence.config import config_from_dict, load_config
+from cadence.hotkey import HotkeyMatcher
 
 
 def test_hold_combo_either_side():
@@ -49,7 +49,7 @@ def test_default_config_file_is_valid():
     import tomllib
     from importlib import resources
 
-    data = tomllib.loads(resources.files("flow").joinpath("default_config.toml").read_text())
+    data = tomllib.loads(resources.files("cadence").joinpath("default_config.toml").read_text())
     config_from_dict(data)
 
 
@@ -58,3 +58,28 @@ def test_invalid_values_rejected():
         config_from_dict({"cleanup": {"llm": "gpt"}})
     with pytest.raises(ValueError):
         config_from_dict({"hotkey": {"mode": "press"}})
+
+
+def test_settings_file_lives_in_the_project_folder():
+    from cadence.config import default_config_path, project_root
+
+    root = project_root()
+    assert root is not None and (root / "README.md").exists()
+    assert default_config_path() == root / "settings.toml"
+
+
+def test_every_option_is_in_the_settings_template():
+    import dataclasses
+    import tomllib
+    from importlib import resources
+
+    from cadence.config import Config
+
+    data = tomllib.loads(resources.files("cadence").joinpath("default_config.toml").read_text())
+    internal = {("audio", "sample_rate"), ("audio", "min_peak"), ("stt", "backend"),
+                ("audio", "device")}  # device is shown commented out
+    cfg = Config()
+    for section in dataclasses.fields(cfg):
+        for f in dataclasses.fields(getattr(cfg, section.name)):
+            if (section.name, f.name) not in internal:
+                assert f.name in data.get(section.name, {}), f"{section.name}.{f.name} missing"

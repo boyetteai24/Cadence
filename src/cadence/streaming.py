@@ -17,7 +17,7 @@ from __future__ import annotations
 import re
 from dataclasses import replace
 
-from flow.stt import Word
+from cadence.stt import Word
 
 _NON_WORD = re.compile(r"[^\w']+")
 

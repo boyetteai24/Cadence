@@ -18,7 +18,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from flow.app import IDLE, LOADING, PROCESSING, RECORDING
+from cadence.app import IDLE, LOADING, PROCESSING, RECORDING
 
 log = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ ERROR_SECONDS = 4.0
 
 
 def _state_file():
-    from flow.config import config_dir
+    from cadence.config import config_dir
 
     return config_dir() / "overlay.json"
 
@@ -89,9 +89,9 @@ def compute_view(state: str, now: float, ready_at: float | None,
     if state == PROCESSING:
         return View("working", "Transcribing", BLUE)
     if state == LOADING:
-        return View("message", "Flow is loading…", FG)
+        return View("message", "Cadence is loading…", FG)
     if state == IDLE and ready_at is not None and now - ready_at < READY_SECONDS:
-        return View("message", f"Flow ready · {hotkey} or click", FG)
+        return View("message", f"Cadence ready · {hotkey} or click", FG)
     if state == IDLE and show_button:
         return View("button")
     return View("hidden")
@@ -108,7 +108,7 @@ class Overlay:
         self.levels: collections.deque[float] = collections.deque([0.0] * 18, maxlen=18)
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
-        self._thread = threading.Thread(target=self._run, name="flow-overlay", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="cadence-overlay", daemon=True)
 
     def start(self) -> None:
         self._thread.start()
@@ -351,7 +351,7 @@ class Overlay:
             pulse = 5 + 2 * (int(time.monotonic() * 3) % 2)
             c.create_oval(20 - pulse, 22 - pulse, 20 + pulse, 22 + pulse, fill=RED, outline=RED)
             c.create_text(36, 22, text=view.text, fill=FG, font=font, anchor="w")
-            # Live mic meter: you can see that Flow hears you.
+            # Live mic meter: you can see that Cadence hears you.
             x0 = 118
             for i, level in enumerate(self.levels):
                 h = max(2, min(26, int((level ** 0.5) * 80)))

@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 import time
 
-from flow.cleanup.base import Cleaner
-from flow.cleanup.rules import RuleCleaner
-from flow.config import Config
+from cadence.cleanup.base import Cleaner
+from cadence.cleanup.rules import RuleCleaner
+from cadence.config import Config
 
 log = logging.getLogger(__name__)
 
@@ -47,11 +47,18 @@ def build_cleaner(cfg: Config) -> CleanupChain:
     common = {"chunk_words": c.chunk_words, "vocabulary": cfg.dictionary.words}
     llm: Cleaner | None = None
     if c.llm == "local":
-        from flow.cleanup.llm import LocalLlmCleaner
+        from cadence.cleanup.llm import LocalLlmCleaner
 
         llm = LocalLlmCleaner(c.local_url, c.local_model, c.timeout_s, **common)
     elif c.llm == "claude":
-        from flow.cleanup.llm import ClaudeCleaner
+        import os
 
-        llm = ClaudeCleaner(c.claude_model, c.timeout_s, **common)
+        from cadence.cleanup.llm import ClaudeCleaner
+
+        if not (c.claude_api_key or os.environ.get("ANTHROPIC_API_KEY")):
+            log.warning(
+                "Claude cleanup is on but no API key is set (cleanup.claude_api_key in "
+                "settings.toml or ANTHROPIC_API_KEY); using rules-only output"
+            )
+        llm = ClaudeCleaner(c.claude_model, c.timeout_s, api_key=c.claude_api_key, **common)
     return CleanupChain(rules, llm, c.min_words_for_llm)

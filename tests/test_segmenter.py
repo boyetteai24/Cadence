@@ -1,6 +1,6 @@
 import numpy as np
 
-from flow.segmenter import find_pause_cut
+from cadence.segmenter import find_pause_cut
 
 SR = 16000
 
