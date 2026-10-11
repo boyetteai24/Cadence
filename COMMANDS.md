@@ -145,6 +145,21 @@ screenshot):
 if ($env:ANTHROPIC_API_KEY) { "set" } else { "not set" }
 ```
 
+**Test that Claude works** (no speaking needed). It prints the cleaned text, then one line
+saying whether Claude was used:
+
+```powershell
+.\.venv\Scripts\python.exe -m cadence clean "um so like I I think we should, you know, maybe go"
+```
+
+| Last line says | Meaning |
+|---|---|
+| `[AI cleanup: claude worked (… ms)]` | All set: Claude is cleaning your dictations |
+| `Claude is OFF because ANTHROPIC_API_KEY isn't set` | Set the key (above), then open a **new** PowerShell window |
+| `claude failed: …authentication…` | The key is wrong or was revoked; set it again |
+| `claude failed: …credit…` or `…billing…` | Add API credits at console.anthropic.com (Plans & Billing) |
+| `AI cleanup: off` | `settings.toml` says `llm = "none"`; change it to `llm = "claude"` |
+
 **Remove it:**
 
 ```powershell

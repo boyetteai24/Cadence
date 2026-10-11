@@ -20,6 +20,7 @@ class CleanupChain:
         self.llm = llm
         self.min_words_for_llm = min_words_for_llm
         self.last_timings: dict[str, float] = {}
+        self.last_llm_status = ""  # what the LLM stage did on the last call, for diagnostics
 
     def clean(self, text: str, continuation: bool = False) -> str:
         """continuation=True: `text` continues a sentence already typed (live word mode);
@@ -28,16 +29,25 @@ class CleanupChain:
         t0 = time.perf_counter()
         text = self.rules.clean(text, continuation) if continuation else self.rules.clean(text)
         self.last_timings["rules"] = time.perf_counter() - t0
-        if self.llm is None or continuation or len(text.split()) < self.min_words_for_llm:
+        if self.llm is None:
+            self.last_llm_status = "off"
+            return text
+        if continuation:
+            self.last_llm_status = "skipped (sentence fragment)"
+            return text
+        if len(text.split()) < self.min_words_for_llm:
+            self.last_llm_status = f"skipped (fewer than {self.min_words_for_llm} words)"
             return text
         t0 = time.perf_counter()
         try:
             polished = self.llm.clean(text)
-        except Exception as e:  # network down, server not running, timeout, ...
+        except Exception as e:  # network down, server not running, timeout, bad key, ...
             log.warning("LLM cleanup (%s) failed, using rule output: %s", self.llm.name, e)
+            self.last_llm_status = f"failed: {e}"
             return text
         finally:
             self.last_timings[self.llm.name] = time.perf_counter() - t0
+        self.last_llm_status = "used"
         return polished or text
 
 
