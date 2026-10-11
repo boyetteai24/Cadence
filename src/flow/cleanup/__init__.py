@@ -21,12 +21,14 @@ class CleanupChain:
         self.min_words_for_llm = min_words_for_llm
         self.last_timings: dict[str, float] = {}
 
-    def clean(self, text: str) -> str:
+    def clean(self, text: str, continuation: bool = False) -> str:
+        """continuation=True: `text` continues a sentence already typed (live word mode);
+        such fragments get the rules stage only, since an LLM needs whole sentences."""
         self.last_timings = {}
         t0 = time.perf_counter()
-        text = self.rules.clean(text)
+        text = self.rules.clean(text, continuation) if continuation else self.rules.clean(text)
         self.last_timings["rules"] = time.perf_counter() - t0
-        if self.llm is None or len(text.split()) < self.min_words_for_llm:
+        if self.llm is None or continuation or len(text.split()) < self.min_words_for_llm:
             return text
         t0 = time.perf_counter()
         try:

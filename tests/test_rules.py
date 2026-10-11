@@ -53,3 +53,9 @@ def test_fillers_can_be_disabled():
 def test_long_text_has_no_limit():
     text = "This is a sentence. " * 5000
     assert clean(text).count("This is a sentence.") == 5000
+
+
+def test_continuation_keeps_first_word_lowercase():
+    rules = RuleCleaner()
+    assert rules.clean("and then um we left. it was late", continuation=True) == "and then we left. It was late"
+    assert rules.clean("and then we left") == "And then we left"

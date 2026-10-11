@@ -52,7 +52,8 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/flow/default_config.toml` | Commented default config (copied by `flow init-config`) |
 | `src/flow/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
 | `src/flow/audio.py` | Microphone capture; `read()` exposes audio while still recording |
-| `src/flow/segmenter.py` | Energy-based pause detection that picks phrase cut points |
+| `src/flow/segmenter.py` | Energy-based pause detection: phrase cut points, trailing silence |
+| `src/flow/streaming.py` | Local-agreement word commit logic for live word-by-word typing |
 | `src/flow/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
 | `src/flow/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
 | `src/flow/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
@@ -67,13 +68,21 @@ Input: the hotkey (`hotkey_down`/`hotkey_up`, modes `tap_or_hold` (default), `ho
 and the overlay's mic button (`click`) drive the same `Dictation` methods; Esc calls `cancel`.
 A tap shorter than `TAP_SECONDS` latches hands-free recording until the next press or click.
 
-Pause splitting (`segmenter.py`): while recording, a thread polls `Recorder.read()` and,
-at each pause (`stt.pause_seconds`) after at least `stt.min_chunk_seconds`, queues the finished
-phrase as a non-final `Job` of the current `Utterance`. Each segment is transcribed with the
-utterance's earlier text as Whisper context. Cleaned text is typed immediately when the
-utterance is hands-free (tap/click) and `output.live_insert` is on; otherwise it is buffered
-and inserted with the final segment. Never inject keystrokes while the user holds the hotkey.
-Cross-segment cleanup (e.g. "scratch that" undoing an already-typed phrase) is not possible.
+Live typing (`stt.live_mode`) runs a thread per recording that hands parts of the audio to
+the worker as non-final `Job`s of the current `Utterance`, advancing `Dictation._cut`:
+- `"words"` (default, `streaming.py`): every `pass_interval` the not-yet-committed audio is
+  re-transcribed with word timestamps. Words that are `lag_words` behind the newest word and
+  identical in two consecutive passes are committed as an already-transcribed `Job(text=...)`.
+  At a pause (`pause_seconds`), everything is committed. Audio is cut halfway into the gap
+  after the last committed word. Falls back to `"pauses"` when `cleanup.llm` is on.
+- `"pauses"` (`segmenter.py`): at each pause after `min_chunk_seconds`, the phrase is queued
+  as audio and transcribed by the worker.
+Each part is transcribed with the utterance's earlier text as Whisper context, and cleaned
+with `continuation=True` when it continues an unfinished sentence (no forced capital).
+Cleaned text is typed immediately when the utterance is hands-free (tap/click) and
+`output.live_insert` is on; otherwise it is buffered and inserted with the final job, which
+covers all audio after the last cut. Never inject keystrokes while the user holds the
+hotkey. Cleanup can't reach back into text that was already typed.
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.

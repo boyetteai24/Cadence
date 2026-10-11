@@ -49,11 +49,16 @@ class SttConfig:
     language: str | None = "en"  # None = auto-detect (slightly slower)
     beam_size: int = 1  # 1 = greedy (fastest); 5 = slightly more accurate
     vad_filter: bool = True  # skip silent stretches; also curbs hallucinations
-    # Transcribe each phrase at the next pause while you keep talking, so text is ready
-    # (or typed live, see output.live_insert) almost as soon as you stop.
-    pause_split: bool = True
+    # Live transcription while you talk (typed live when hands-free, see output.live_insert):
+    # "words":  type each word once it's `lag_words` words behind you, and at every pause.
+    #           (Uses "pauses" instead when cleanup.llm is on: the LLM needs whole phrases.)
+    # "pauses": type each phrase at the next pause.
+    # "off":    transcribe everything after you stop.
+    live_mode: str = "words"
+    lag_words: int = 5  # how far behind your voice the typing stays in "words" mode
+    pass_interval: float = 0.4  # seconds between re-transcription passes in "words" mode
     pause_seconds: float = 0.6  # how long a pause ends a phrase
-    min_chunk_seconds: float = 2.0  # don't split off phrases shorter than this
+    min_chunk_seconds: float = 2.0  # "pauses" mode: don't split off phrases shorter than this
 
 
 @dataclass
@@ -155,6 +160,8 @@ def load_config(path: Path | None = None) -> Config:
 def validate(cfg: Config) -> None:
     if cfg.hotkey.mode not in ("tap_or_hold", "hold", "toggle"):
         raise ValueError("hotkey.mode must be 'tap_or_hold', 'hold' or 'toggle'")
+    if cfg.stt.live_mode not in ("words", "pauses", "off"):
+        raise ValueError("stt.live_mode must be 'words', 'pauses' or 'off'")
     if cfg.cleanup.llm not in ("none", "local", "claude"):
         raise ValueError("cleanup.llm must be 'none', 'local' or 'claude'")
     if cfg.output.method not in ("paste", "type"):

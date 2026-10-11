@@ -22,11 +22,16 @@ compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
 language = "en"           # "" = auto-detect
 beam_size = 1             # 5 is slightly more accurate and a bit slower
 vad_filter = true
-# Transcribe each phrase at the next pause while you keep talking, so the text is ready
-# almost as soon as you stop (and typed live when hands-free, see output.live_insert).
-pause_split = true
+# Live transcription while you talk (typed as you go when hands-free, see output.live_insert):
+#   "words"  = each word is typed once you're lag_words words past it, and at every pause
+#              (switches to "pauses" automatically when an AI cleanup llm is on)
+#   "pauses" = each phrase is typed when you pause
+#   "off"    = everything is transcribed after you stop
+live_mode = "words"
+lag_words = 5             # lower = text follows your voice more closely, but fewer corrections fit
+pass_interval = 0.4       # seconds between re-checks in "words" mode (lower = more GPU work)
 pause_seconds = 0.6       # a pause this long ends a phrase
-min_chunk_seconds = 2.0
+min_chunk_seconds = 2.0   # "pauses" mode only
 
 [cleanup]
 remove_fillers = true

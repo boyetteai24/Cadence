@@ -27,6 +27,8 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
       automatically if it still grabbed focus before pasting; our own injected keys ignored
 - [x] Pause splitting: phrases transcribed at each pause while you talk; typed live when
       hands-free, buffered while the hotkey is held; earlier text passed as Whisper context
+- [x] Live word-by-word typing (default `live_mode = "words"`): words typed once 5 words
+      behind and stable across two passes, everything at pauses; continuation-aware cleanup
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
 - [x] Mic button moved by right-click + drag; position remembered across restarts (drag tracks
       the real cursor via Win32 polling, since Tk motion events didn't arrive on Windows)
@@ -65,8 +67,9 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
   Run Flow elevated if you need to dictate into elevated apps.
 - Live insertion types each phrase separately, so "scratch that" or a correction can only fix
   text within the current phrase, and the optional LLM sees one phrase at a time.
-- Pause splitting has only been tested with simulated audio; `pause_seconds` and
-  `min_chunk_seconds` may need tuning on real speech.
+- Live typing ("words" and "pauses" modes) has only been tested with simulated audio;
+  `lag_words`, `pass_interval` and `pause_seconds` may need tuning on real speech and GPU.
+  Word mode re-transcribes about twice a second, so the GPU is busier while you talk.
 - `type` output mode sends newlines as Enter, which submits messages in chat apps.
 - Rules-only mode handles corrections only with explicit markers and short replacements
   (≤3 words); everything else needs the LLM stage.

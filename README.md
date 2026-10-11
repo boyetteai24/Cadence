@@ -47,13 +47,18 @@ There are three ways to dictate:
   finish. Clicking it doesn't move your cursor, so the text still goes where you were typing.
   To move the button, **right-click and drag** it. Flow remembers where you put it.
 
-**When you tap or click, text appears as you talk.** Each time you pause briefly (about
-0.6 s), the phrase you just said is typed in while you carry on. When you hold the
-shortcut, phrases are still transcribed during your pauses, but the text waits until you let
-go (typing while keys are held would trigger shortcuts). Either way, the wait after you stop
-is only for your last phrase.
+**When you tap or click, text appears as you talk.** Each word is typed once you're about
+five words past it. That's far enough back that an "um" or a "no wait" right after it can
+still be handled. Whenever you pause briefly, everything so far is typed. When you hold the
+shortcut, the same work happens in the background, but the text waits until you let go
+(typing while keys are held would trigger shortcuts). Either way, the wait after you stop is
+only for your last few words.
 
-**Esc** cancels the current recording. Phrases that were already typed stay.
+Set `live_mode = "pauses"` to type whole phrases at each pause instead, or `"off"` to
+transcribe everything after you stop. With an AI cleanup model switched on, Flow uses
+`"pauses"`, because the AI needs whole phrases to work with.
+
+**Esc** cancels the current recording. Words that were already typed stay.
 - **Corrections:** "…at 3pm, no wait, 4pm" → "…at 4pm". "Scratch that" deletes the previous sentence.
 - **Formatting:** say "new line" or "new paragraph".
 - If text didn't land where you wanted it, use **tray → Copy last dictation**.

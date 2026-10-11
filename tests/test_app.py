@@ -34,7 +34,7 @@ class FakeTranscriber:
     def load(self):
         pass
 
-    def transcribe(self, audio, sample_rate=16000, context=""):
+    def transcribe(self, audio, sample_rate=16000, context="", word_timestamps=False):
         return Transcript(self.text, "en", len(audio) / sample_rate)
 
 
@@ -49,6 +49,7 @@ class FakeInjector:
 def make(text="um so this is a test", audio=None):
     cfg = Config()
     cfg.ui.sounds = False
+    cfg.stt.live_mode = "off"  # FakeRecorder can't be read while recording anyway
     if audio is None:
         audio = (np.sin(np.linspace(0, 1000, 32000)) * 0.3).astype(np.float32)
     injector = FakeInjector()
@@ -192,7 +193,7 @@ class CountingTranscriber(FakeTranscriber):
         self.calls = 0
         self.contexts = []
 
-    def transcribe(self, audio, sample_rate=16000, context=""):
+    def transcribe(self, audio, sample_rate=16000, context="", word_timestamps=False):
         self.calls += 1
         self.contexts.append(context)
         return Transcript(f"phrase {self.calls}.", "en", len(audio) / sample_rate)
@@ -202,6 +203,7 @@ def streaming_app(mode="tap_or_hold"):
     cfg = Config()
     cfg.ui.sounds = False
     cfg.hotkey.mode = mode
+    cfg.stt.live_mode = "pauses"
     injector = FakeInjector()
     transcriber = CountingTranscriber()
     d = Dictation(cfg, StreamingRecorder(speech_with_pauses()), transcriber,
