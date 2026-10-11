@@ -1,0 +1,54 @@
+# Flow configuration. Every setting is optional; delete a line to use the default.
+# Changes take effect after restarting Flow.
+
+[hotkey]
+# Keys joined by "+": ctrl, alt, shift, win (either side) or ctrl_r, alt_l, ... ,
+# space, f1..f24, or a single character.
+combo = "ctrl+win"
+# "hold" = push-to-talk; "toggle" = press to start, press again to stop.
+# Esc cancels the current recording in either mode.
+mode = "hold"
+
+[audio]
+# device = 1            # index or name from `flow devices`; omit for system default
+keep_stream_open = false  # true = faster start, but Windows shows the mic as in use
+min_seconds = 0.3
+
+[stt]
+model = "large-v3-turbo"  # or "distil-large-v3", "small.en", "medium.en", a local path...
+device = "auto"           # auto | cuda | cpu
+compute_type = "auto"     # auto = float16 on GPU, int8 on CPU
+language = "en"           # "" = auto-detect
+beam_size = 1             # 5 is slightly more accurate and a bit slower
+vad_filter = true
+
+[cleanup]
+remove_fillers = true
+voice_commands = true     # "new line", "new paragraph"
+# AI polish after the rules stage: "none", "local", or "claude".
+llm = "none"
+min_words_for_llm = 4
+timeout_s = 10.0
+# Any OpenAI-compatible server: Ollama (default port 11434), llama.cpp (8080), LM Studio (1234).
+local_url = "http://localhost:11434/v1"
+local_model = "qwen2.5:3b-instruct"
+# Claude reads the API key from the ANTHROPIC_API_KEY environment variable.
+claude_model = "claude-haiku-5-5"
+
+[output]
+method = "paste"          # "paste" (recommended) or "type"
+paste_keys = "ctrl+v"
+restore_clipboard = true
+paste_delay_ms = 120
+trailing_space = true
+
+[ui]
+sounds = true
+tray = true
+
+[dictionary]
+# Names and jargon Whisper should spell correctly.
+words = []
+# Spoken phrase = written form (case-insensitive, whole words).
+[dictionary.replacements]
+# "flow app" = "Flow"
