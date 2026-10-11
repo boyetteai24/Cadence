@@ -1,0 +1,43 @@
+"""Speech-to-text backends."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Protocol
+
+import numpy as np
+
+from flow.config import Config
+
+
+@dataclass
+class Transcript:
+    text: str
+    language: str | None = None
+    audio_seconds: float = 0.0
+
+
+class Transcriber(Protocol):
+    def load(self) -> None:
+        """Load the model (slow). Called once at start-up."""
+        ...
+
+    def transcribe(self, audio: np.ndarray, sample_rate: int = 16000) -> Transcript:
+        """audio: mono float32 in [-1, 1]."""
+        ...
+
+
+def build_transcriber(cfg: Config) -> Transcriber:
+    if cfg.stt.backend == "faster-whisper":
+        from flow.stt.whisper import FasterWhisperTranscriber
+
+        return FasterWhisperTranscriber(
+            model=cfg.stt.model,
+            device=cfg.stt.device,
+            compute_type=cfg.stt.compute_type,
+            language=cfg.stt.language,
+            beam_size=cfg.stt.beam_size,
+            vad_filter=cfg.stt.vad_filter,
+            vocabulary=cfg.dictionary.words,
+        )
+    raise ValueError(f"Unknown stt.backend: {cfg.stt.backend!r}")
