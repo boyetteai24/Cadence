@@ -107,8 +107,27 @@ def cmd_clean(cfg: Config, args) -> int:
 
     if args.no_llm:
         cfg.cleanup.llm = "none"
-    print(build_cleaner(cfg).clean(args.text))
+    chain = build_cleaner(cfg)
+    print(chain.clean(args.text))
+    print(describe_llm(cfg, chain), file=sys.stderr)
     return 0
+
+
+def describe_llm(cfg: Config, chain) -> str:
+    """One line saying whether the AI cleanup actually ran, and if not, why."""
+    import os
+
+    llm = cfg.cleanup.llm
+    if llm == "none":
+        return "[AI cleanup: off (llm = \"none\"); built-in rules only]"
+    if chain.llm is None and llm == "claude" and not os.environ.get("ANTHROPIC_API_KEY"):
+        return ("[AI cleanup: Claude is OFF because ANTHROPIC_API_KEY isn't set in this "
+                "PowerShell window. Set it (COMMANDS.md, 'Claude API key'), then open a new window]")
+    status = chain.last_llm_status
+    ms = chain.last_timings.get(chain.llm.name, 0) * 1000 if chain.llm else 0
+    if status == "used":
+        return f"[AI cleanup: {llm} worked ({ms:.0f} ms)]"
+    return f"[AI cleanup: {llm} {status}; showing built-in rules output]"
 
 
 def cmd_devices(cfg: Config, args) -> int:

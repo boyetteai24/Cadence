@@ -118,3 +118,25 @@ def test_claude_is_default_but_only_used_with_an_api_key(monkeypatch):
     assert build_cleaner(cfg).llm is None  # no key: rules only, nothing is sent anywhere
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
     assert isinstance(build_cleaner(cfg).llm, ClaudeCleaner)
+
+
+def test_clean_command_reports_whether_claude_ran(monkeypatch, tmp_path, capsys):
+    from cadence.cli import main
+
+    settings = tmp_path / "settings.toml"
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert main(["--config", str(settings), "clean", "um so I think we should go"]) == 0
+    out = capsys.readouterr()
+    assert out.out.strip() == "So I think we should go"
+    assert "ANTHROPIC_API_KEY isn't set" in out.err
+
+    assert main(["--config", str(settings), "--llm", "none", "clean", "hello there friend"]) == 0
+    assert "off" in capsys.readouterr().err
+
+
+def test_chain_reports_llm_status():
+    chain = CleanupChain(RuleCleaner(), BrokenCleaner(), min_words_for_llm=3)
+    chain.clean("hi")
+    assert chain.last_llm_status.startswith("skipped")
+    chain.clean("one two three four")
+    assert chain.last_llm_status.startswith("failed")

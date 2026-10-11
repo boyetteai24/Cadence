@@ -37,6 +37,8 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       beam size 5 for accuracy); dictation left on the clipboard; "or sorry" corrections;
       repeats with apostrophes ("I'm using I'm using") collapsed; smarter correction alignment
 - [x] Claude Haiku cleanup on by default (v0.6.0), active only when `ANTHROPIC_API_KEY` is set
+- [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
+      verified against a local stub server (model, thinking off, key header, transcript tags)
 - [x] One-run overrides from the command line: `--llm claude`, `--set section.name=value`
 - [x] `COMMANDS.md`: copy-paste PowerShell cheat sheet in the project folder
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
