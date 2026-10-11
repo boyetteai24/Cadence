@@ -49,8 +49,8 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | Path | Responsibility |
 |------|----------------|
 | `src/cadence/config.py` | Typed dataclass config loaded from TOML; validation |
-| `src/cadence/default_config.toml` | Commented template for the user's `settings.toml` (copied on first run) |
-| `settings.toml` (project root, git-ignored) | The user's settings; `config.default_config_path()` |
+| `settings.toml` (project root, tracked, public) | The user's settings, edited on GitHub then pulled; `config.default_config_path()` |
+| `src/cadence/default_config.toml` | Commented template: used to recreate `settings.toml` if it's deleted |
 | `src/cadence/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
 | `src/cadence/audio.py` | Microphone capture; `read()` exposes audio while still recording |
 | `src/cadence/segmenter.py` | Energy-based pause detection: phrase cut points, trailing silence |
@@ -119,8 +119,10 @@ earlier ones are still processing; results are inserted in order.
 - **No word limits.** Don't add caps on recording length or text length; chunk instead.
 - **Config.** Every new option gets a default in `config.py`, a plain-language commented entry
   in `default_config.toml` (a test checks that every option appears there), and validation if
-  it's an enum. Users edit `settings.toml` in the project root, created from that template on
-  first run and git-ignored. `--set section.name=value` / `--llm` override any option for
+  it's an enum. When adding an option, also add it to the tracked `settings.toml` in the root,
+  which the user edits on GitHub and pulls (they don't edit it locally). It is public: never
+  put secrets or personal details in it. When a default changes, update both files; the
+  user's `settings.toml` is theirs, so change its values only when they ask. `--set section.name=value` / `--llm` override any option for
   one run (`config.apply_overrides`, type-checked against the defaults); never write them back. Secrets (the Claude API key) are never read from settings
   files, only from environment variables (`ANTHROPIC_API_KEY`); this repo is public.
 - **Claude API.** Use the official `anthropic` SDK. Default model `claude-haiku-5-5`, thinking

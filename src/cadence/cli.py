@@ -209,7 +209,11 @@ def main(argv: list[str] | None = None) -> int:
         write_default_config(args.config)
         logging.info("Created settings file %s", args.config)
     logging.info("Settings: %s", args.config)
-    cfg = load_config(args.config)
+    try:
+        cfg = load_config(args.config)
+    except Exception as e:  # TOML syntax error or an invalid value
+        parser.exit(2, f"cadence: there's a mistake in {args.config}:\n  {e}\n"
+                       "Fix that line (or undo your last change on GitHub), then try again.\n")
     overrides = args.set + ([f"cleanup.llm={args.llm}"] if args.llm else [])
     try:
         for change in apply_overrides(cfg, overrides):

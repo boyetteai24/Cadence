@@ -115,3 +115,39 @@ def test_cli_override_does_not_touch_settings_file(tmp_path, capsys):
                  "clean", "um hello"]) == 0
     assert capsys.readouterr().out.strip() == "Um hello"  # fillers kept: override applied
     assert "remove_fillers = true" in settings.read_text()  # file still has the default
+
+
+def test_the_settings_file_on_github_is_valid():
+    from cadence.config import load_config, project_root
+
+    cfg = load_config(project_root() / "settings.toml")
+    assert cfg.cleanup.llm in ("none", "claude", "local")
+
+
+def test_a_mistake_in_settings_gives_a_clear_message(tmp_path, capsys):
+    from cadence.cli import main
+
+    bad = tmp_path / "settings.toml"
+    bad.write_text('[cleanup]\nllm = "gpt"\n')
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--config", str(bad), "clean", "hello"])
+    assert exit_info.value.code == 2
+    err = capsys.readouterr().err
+    assert "there's a mistake in" in err and "cleanup.llm" in err
+
+    bad.write_text("[cleanup\nllm = claude\n")  # broken TOML syntax
+    with pytest.raises(SystemExit):
+        main(["--config", str(bad), "clean", "hello"])
+    assert "there's a mistake in" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("remote", [
+    "https://github.com/boyetteai24/cadence",
+    "https://github.com/boyetteai24/cadence.git",
+    "git@github.com:boyetteai24/cadence.git",
+])
+def test_github_edit_url(remote):
+    from cadence.config import github_edit_url
+
+    assert github_edit_url(remote) == "https://github.com/boyetteai24/cadence/edit/main/settings.toml"
+    assert github_edit_url("https://gitlab.com/x/y") is None

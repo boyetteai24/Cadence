@@ -62,8 +62,8 @@ Any one of these:
 
 ## Use a different setting for one run only
 
-Add options after `-m cadence`. Your saved `settings.toml` is **not** changed. The next
-normal start uses your saved settings again.
+Add options after `-m cadence`. `settings.toml` is **not** changed. The next normal start
+uses your saved settings again.
 
 Claude cleanup is **on by default** (as soon as your API key is set, see below).
 
@@ -103,26 +103,32 @@ If you misspell a setting, Cadence stops and tells you what's wrong.
 
 ---
 
-## Change a setting permanently
+## Change a setting permanently (on GitHub)
 
-Open the settings file in Notepad, change it, save, then restart Cadence:
+Your settings live in `settings.toml` on GitHub, and every setting has an explanation next
+to it. The repository is **public**, so never put keys, passwords or personal details in it.
 
-```powershell
-notepad settings.toml
-```
-
-(Or: tray icon → **Open settings**.) Every setting has an explanation next to it. If the file
-doesn't exist yet, start Cadence once and it gets created.
-
-**Reset all settings to the current defaults.** Do this after an update whose notes say
-"defaults changed", since your `settings.toml` keeps the values it was created with. Stop
-Cadence first, then:
+1. Open it for editing: tray icon → **Edit settings on GitHub**, or go to
+   https://github.com/boyetteai24/cadence/edit/main/settings.toml
+2. Change the value, then click **Commit changes** (straight to `main` is fine).
+3. On your PC: quit Cadence, then in PowerShell in the Cadence folder:
 
 ```powershell
-del settings.toml
+git pull
 ```
 
-The next start creates a fresh one. (Any changes you'd made are lost, so note them first.)
+4. Start Cadence again.
+
+If you made a typo, Cadence won't start and tells you which line is wrong. Fix it on GitHub,
+`git pull`, and start again.
+
+**Don't also edit `settings.toml` on your PC** (in Notepad), or `git pull` will complain that
+your local changes would be overwritten. If that happens, throw away the local edits and pull:
+
+```powershell
+git checkout -- settings.toml
+git pull
+```
 
 ---
 
@@ -158,7 +164,7 @@ saying whether Claude was used:
 | `Claude is OFF because ANTHROPIC_API_KEY isn't set` | Set the key (above), then open a **new** PowerShell window |
 | `claude failed: …authentication…` | The key is wrong or was revoked; set it again |
 | `claude failed: …credit…` or `…billing…` | Add API credits at console.anthropic.com (Plans & Billing) |
-| `AI cleanup: off` | `settings.toml` says `llm = "none"`; change it to `llm = "claude"` |
+| `AI cleanup: off` | `settings.toml` says `llm = "none"`; change it to `llm = "claude"` on GitHub, then `git pull` |
 
 **Remove it:**
 
@@ -216,7 +222,7 @@ Turn it off again:
 
 ## Troubleshooting
 
-**List microphones** (use the number in `settings.toml` under `[audio]`, `device = ...`):
+**List microphones** (put the number in `settings.toml` on GitHub, under `[audio]`, as `device = 1`):
 
 ```powershell
 .\.venv\Scripts\python.exe -m cadence devices
@@ -240,4 +246,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.6.0 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.7.0 starting`.

@@ -1,9 +1,9 @@
 """Configuration: typed dataclasses loaded from `settings.toml`.
 
 The settings file lives in the project folder (next to README.md) when Cadence runs from a
-source checkout, so it's easy to find; it is git-ignored, so `git pull` never touches it.
-Installed without a checkout, it lives in %APPDATA%\\Cadence (Windows) or ~/.config/cadence.
-It is created from default_config.toml on first run. Every field has a default, so missing
+source checkout. It is tracked in git: the owner edits it on GitHub and pulls. Installed
+without a checkout, it lives in %APPDATA%\\Cadence (Windows) or ~/.config/cadence. If it's
+missing, it is recreated from default_config.toml. Every field has a default, so missing
 lines are fine.
 """
 
@@ -12,6 +12,7 @@ from __future__ import annotations
 import dataclasses
 import logging
 import os
+import re
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -135,6 +136,30 @@ def project_root() -> Path | None:
     """The source checkout this package runs from (where pyproject.toml is), if any."""
     root = Path(__file__).resolve().parents[2]
     return root if (root / "pyproject.toml").is_file() else None
+
+
+def github_edit_url(remote_url: str, branch: str = "main") -> str | None:
+    """'https://github.com/owner/repo(.git)' or 'git@github.com:owner/repo.git' ->
+    the GitHub page for editing settings.toml on `branch`."""
+    m = re.match(r"(?:https://|git@)github\.com[/:]([^/]+)/([^/]+?)(?:\.git)?/?$", remote_url.strip())
+    return f"https://github.com/{m[1]}/{m[2]}/edit/{branch}/settings.toml" if m else None
+
+
+def settings_edit_url() -> str | None:
+    """Where to edit settings.toml on GitHub, from this checkout's `origin` remote."""
+    import subprocess
+
+    root = project_root()
+    if root is None:
+        return None
+    try:
+        remote = subprocess.run(
+            ["git", "remote", "get-url", "origin"], cwd=root, capture_output=True,
+            text=True, timeout=5, check=True,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return github_edit_url(remote)
 
 
 def default_config_path() -> Path:

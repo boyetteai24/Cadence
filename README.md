@@ -69,12 +69,12 @@ the AI can't change words that are already typed.
 
 ## Settings
 
-All settings live in **`settings.toml` in the Cadence folder** (next to this README). It's
-created the first time Cadence starts, and every option has a comment explaining it. Open it
-in Notepad, or use **tray → Open settings**. Save it, then restart Cadence.
+All settings live in **`settings.toml`** in the main project folder, on GitHub, and every
+option has a comment explaining it. To change one, edit it on GitHub (tray → **Edit settings
+on GitHub**), commit, then on your PC quit Cadence, run `git pull`, and start it again.
 
-`settings.toml` is ignored by git, so `git pull` never overwrites your changes. To start over,
-delete the file and it will be recreated with the defaults.
+The repository is public, so `settings.toml` must never contain secrets or personal details.
+The Claude API key is read only from the `ANTHROPIC_API_KEY` environment variable.
 
 **Change a setting for one run only** by adding it to the start command. `settings.toml`
 stays as it is, and the next normal start uses your saved settings again:
@@ -116,7 +116,7 @@ words = ["Cadence", "Wispr Flow"]   # names Whisper should spell right
 ### AI cleanup with a local LLM
 
 1. Install [Ollama](https://ollama.com) and run `ollama pull qwen2.5:3b-instruct`.
-2. In `settings.toml`, set `llm = "local"`.
+2. In `settings.toml` (on GitHub), set `llm = "local"`, then `git pull`.
 
 Any OpenAI-compatible server works. Point `local_url` and `local_model` at it.
 
