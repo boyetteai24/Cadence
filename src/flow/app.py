@@ -248,15 +248,18 @@ def run(cfg: Config) -> None:
         log.info("Ready. Hold %s and speak (%s mode). Esc cancels.", cfg.hotkey.combo, cfg.hotkey.mode)
 
     if tray is not None:
-        # Tray must own the main thread; load the model in the background meanwhile.
+        # The tray runs its own message loop on a background thread, so the main thread
+        # stays in Python and Ctrl+C in the console still works.
+        tray.start()
         threading.Thread(target=load, daemon=True).start()
-        tray.run()
     else:
         load()
-        try:
-            while True:
-                time.sleep(1)
-        except KeyboardInterrupt:
-            pass
+    try:
+        while tray is None or not tray.stopped.is_set():
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        log.info("Stopping (Ctrl+C)")
+    if tray is not None:
+        tray.stop()
     listener.stop()
     dictation.shutdown()

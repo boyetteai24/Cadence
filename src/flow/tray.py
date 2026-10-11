@@ -6,6 +6,7 @@ import logging
 import os
 import subprocess
 import sys
+import threading
 
 import pystray
 from PIL import Image, ImageDraw
@@ -54,6 +55,7 @@ class Tray:
         self.cfg = cfg
         self._images = {state: _icon_image(c) for state, c in _COLORS.items()}
         self.icon = pystray.Icon("Flow", self._images[LOADING], "Flow", menu=self._menu())
+        self.stopped = threading.Event()
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
 
@@ -81,7 +83,7 @@ class Tray:
             ),
             pystray.MenuItem("Open config file", lambda: self._open_config()),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem("Quit", lambda: self.icon.stop()),
+            pystray.MenuItem("Quit", lambda: self.stop()),
         )
 
     def _on_state(self, state: str) -> None:
@@ -115,5 +117,12 @@ class Tray:
             write_default_config(path)
         _open_path(path)
 
-    def run(self) -> None:
-        self.icon.run()
+    def start(self) -> None:
+        self.icon.run_detached()
+
+    def stop(self) -> None:
+        self.stopped.set()
+        try:
+            self.icon.stop()
+        except Exception:
+            pass
