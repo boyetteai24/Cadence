@@ -204,6 +204,7 @@ def streaming_app(mode="tap_or_hold"):
     cfg.ui.sounds = False
     cfg.hotkey.mode = mode
     cfg.stt.live_mode = "pauses"
+    cfg.output.live_insert = True
     injector = FakeInjector()
     transcriber = CountingTranscriber()
     d = Dictation(cfg, StreamingRecorder(speech_with_pauses()), transcriber,
@@ -259,3 +260,81 @@ def test_live_insert_can_be_disabled():
     d.click()
     wait_idle(d)
     assert injector.inserted == ["Phrase 1. Phrase 2. Phrase 3. "]
+
+
+# --- default: nothing typed until you stop, whole dictation cleaned at once -----------------
+
+class ScriptedTranscriber(FakeTranscriber):
+    def __init__(self, parts):
+        super().__init__("")
+        self.parts = list(parts)
+        self.calls = 0
+
+    def transcribe(self, audio, sample_rate=16000, context="", word_timestamps=False):
+        self.calls += 1
+        text = self.parts.pop(0) if self.parts else ""
+        return Transcript(text, "en", len(audio) / sample_rate)
+
+
+class RecordingLlm:
+    name = "fake-llm"
+
+    def __init__(self):
+        self.seen = []
+
+    def clean(self, text):
+        self.seen.append(text)
+        return text
+
+
+class RememberingInjector(FakeInjector):
+    def __init__(self):
+        super().__init__()
+        self.remembered = []
+
+    def remember(self, text):
+        self.remembered.append(text)
+
+
+def default_app(parts, llm=None, injector=None):
+    cfg = Config()  # defaults: live_mode "pauses", live_insert False
+    cfg.ui.sounds = False
+    injector = injector or FakeInjector()
+    transcriber = ScriptedTranscriber(parts)
+    d = Dictation(cfg, StreamingRecorder(speech_with_pauses()), transcriber,
+                  CleanupChain(RuleCleaner(), llm, min_words_for_llm=1), injector)
+    d.load()
+    return d, injector, transcriber
+
+
+def test_default_types_nothing_until_stop_and_cleans_across_pauses():
+    parts = ["I'm using", "I'm using flow, or sorry, Cadence.", "That's it."]
+    d, injector, transcriber = default_app(parts)
+    d.click()  # hands-free
+    assert wait_for(lambda: transcriber.calls >= 2)  # transcribed during the pauses...
+    assert injector.inserted == []  # ...but nothing typed yet
+    d.click()
+    wait_idle(d)
+    # The repeat and the correction span the pause, so they're only fixable all at once.
+    assert injector.inserted == ["I'm using Cadence. That's it. "]
+
+
+def test_llm_sees_the_whole_dictation_once():
+    llm = RecordingLlm()
+    d, injector, transcriber = default_app(["one two three.", "four five six.", "seven."], llm)
+    d.click()
+    assert wait_for(lambda: transcriber.calls >= 2)
+    d.click()
+    wait_idle(d)
+    assert llm.seen == ["One two three. Four five six. Seven."]
+
+
+def test_whole_dictation_is_left_on_the_clipboard_after_live_typing():
+    injector = RememberingInjector()
+    d, injector, transcriber = default_app(["one.", "two.", "three."], injector=injector)
+    d.cfg.output.live_insert = True
+    d.click()
+    assert wait_for(lambda: len(injector.inserted) >= 2)
+    d.click()
+    wait_idle(d)
+    assert injector.remembered == ["One. Two. Three. "]

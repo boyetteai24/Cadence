@@ -42,7 +42,8 @@ class Utterance:
     hands_free: bool = False  # True once the user isn't holding keys: safe to type live
     cancelled: bool = False
     segments: int = 0
-    buffered: list[str] = field(default_factory=list)  # cleaned text not yet inserted
+    pending: list[str] = field(default_factory=list)  # raw text transcribed, not yet typed
+    typed_raw: str = ""  # raw text of what has already been typed
     context: str = ""  # recent raw transcript, given to Whisper for continuity
     stopped_at: float | None = None  # when the user finished speaking
     result: Result = field(default_factory=Result)
@@ -145,7 +146,7 @@ class Dictation:
             utterance = self._utterance
             if cancel:
                 log.info("Recording cancelled")
-                utterance.cancelled = True  # drops queued segments and buffered text
+                utterance.cancelled = True  # drops queued segments and pending text
                 self._set_state(PROCESSING if self._pending else IDLE)
                 return
             utterance.stopped_at = time.perf_counter()
@@ -157,8 +158,8 @@ class Dictation:
 
     def live_mode(self) -> str:
         mode = self.cfg.stt.live_mode
-        if mode == "words" and self.cfg.cleanup.llm != "none":
-            return "pauses"  # an LLM can't polish sentence fragments
+        if mode == "words" and self.cfg.cleanup.llm != "none" and self.cfg.output.live_insert:
+            return "pauses"  # typed live, an LLM would only ever see sentence fragments
         return mode
 
     def _type_words_live(self, utterance: Utterance) -> None:
@@ -302,50 +303,56 @@ class Dictation:
         return utterance.result
 
     def _process_job(self, job: Job) -> None:
-        """Transcribe + clean one segment, then insert it now or buffer it.
+        """Transcribe one segment, then type what's pending now or keep it for later.
 
-        Segments of one utterance arrive in order. Text is inserted as soon as it's safe:
-        immediately when hands-free (nobody is holding modifier keys), otherwise when the
-        final segment arrives.
+        Segments of one utterance arrive in order. Pending text is cleaned and typed at the
+        final segment, or right away when typing live (hands-free with output.live_insert).
+        Cleaning everything pending in one go lets the rules and the LLM see across the
+        pauses where the audio was split (a repeat or a "no wait" spanning two segments).
         """
         u = job.utterance
         if u.cancelled:
             return
         u.segments += 1
         self.last_result = u.result
-        text = self._transcribe_and_clean(
-            job.audio, u, alone=job.final and u.segments == 1, raw=job.text
-        )
-        if text:
-            u.buffered.append(text)
-        if not (job.final or (u.hands_free and self.cfg.output.live_insert)):
+        raw = self._transcribe(job.audio, u, alone=job.final and u.segments == 1, raw=job.text)
+        if raw:
+            u.pending.append(raw)
+        live = u.hands_free and self.cfg.output.live_insert
+        if not (job.final or live) or not u.pending:
             return
-        out, u.buffered = "".join(u.buffered), []
-        if not out or u.cancelled:
+        pending, u.pending = " ".join(u.pending), []
+        text = self._clean(pending, u)
+        u.typed_raw = f"{u.typed_raw} {pending}".strip()
+        if not text or u.cancelled:
             return
         if self.before_insert:
             self.before_insert()
         t0 = time.perf_counter()
-        self.injector.insert(out)
+        self.injector.insert(text)
         u.result.timings["insert"] = time.perf_counter() - t0
-        u.result.text += out
+        u.result.text += text
         u.result.skipped = None
-        if job.final and u.stopped_at is not None:
-            # The latency the user feels: from finishing speaking to text appearing.
-            u.result.timings["after_stop"] = time.perf_counter() - u.stopped_at
-            log.info(
-                "Dictated %.1fs audio in %d segment(s) | text appeared %.0fms after you stopped",
-                u.result.audio_seconds, u.segments, u.result.timings["after_stop"] * 1000,
-            )
+        if job.final:
+            if u.segments > 1 and hasattr(self.injector, "remember"):
+                self.injector.remember(u.result.text)  # whole dictation, not the last part
+            if u.stopped_at is not None:
+                # The latency the user feels: from finishing speaking to text appearing.
+                u.result.timings["after_stop"] = time.perf_counter() - u.stopped_at
+                log.info(
+                    "Dictated %.1fs audio in %d segment(s) | text appeared %.0fms after you "
+                    "stopped", u.result.audio_seconds, u.segments,
+                    u.result.timings["after_stop"] * 1000,
+                )
 
-    def _transcribe_and_clean(
+    def _transcribe(
         self, audio: np.ndarray, u: Utterance, alone: bool, raw: str | None = None
     ) -> str:
+        """Speech to raw text for one segment ("" if there's nothing to transcribe)."""
         sr = self.cfg.audio.sample_rate
         result = u.result
         seconds = len(audio) / sr
         result.audio_seconds += seconds
-        timings: dict[str, float] = {}
         if raw is None:
             # The short-tap guard only applies to a whole recording, not a trailing segment.
             if alone and seconds < self.cfg.audio.min_seconds:
@@ -356,30 +363,31 @@ class Dictation:
                 return ""
             t0 = time.perf_counter()
             raw = self.transcriber.transcribe(audio, sr, context=u.context).text
-            timings["stt"] = time.perf_counter() - t0
+            elapsed = time.perf_counter() - t0
+            result.timings["stt"] = result.timings.get("stt", 0.0) + elapsed
+            log.info("Segment %d: %.1fs audio | stt=%.0fms", u.segments, seconds, elapsed * 1000)
         raw = raw.strip()
         if not raw:
             result.skipped = result.skipped or "no speech"
             return ""
-        # Mid-sentence continuation of earlier text: don't capitalize its first word.
-        continuation = bool(result.raw) and not result.raw.rstrip().endswith((".", "!", "?"))
         result.raw = f"{result.raw} {raw}".strip()
         u.context = result.raw[-400:]
+        return raw
 
+    def _clean(self, raw: str, u: Utterance) -> str:
+        """Rules (+ LLM) cleanup of text about to be typed, with a trailing space."""
+        result = u.result
+        # Continues a sentence that's already typed: don't capitalize its first word.
+        continuation = bool(u.typed_raw) and not u.typed_raw.rstrip().endswith((".", "!", "?"))
         t0 = time.perf_counter()
         text = self.cleaner.clean(raw, continuation=True) if continuation else self.cleaner.clean(raw)
-        timings["cleanup"] = time.perf_counter() - t0
+        timings = {"cleanup": time.perf_counter() - t0}
         timings.update(
             {f"cleanup.{k}": v for k, v in getattr(self.cleaner, "last_timings", {}).items()}
         )
         for k, v in timings.items():
             result.timings[k] = result.timings.get(k, 0.0) + v
-        log.info(
-            "Segment %d: %.1fs audio | %s",
-            u.segments,
-            seconds,
-            " ".join(f"{k}={v * 1000:.0f}ms" for k, v in timings.items()),
-        )
+        log.info("Cleanup | %s", " ".join(f"{k}={v * 1000:.0f}ms" for k, v in timings.items()))
         log.debug("raw=%r clean=%r", raw, text)
         if not text:
             result.skipped = result.skipped or "empty after cleanup"

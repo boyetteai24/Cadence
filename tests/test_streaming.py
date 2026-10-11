@@ -129,6 +129,7 @@ def words_app(mode="tap_or_hold"):
     cfg.hotkey.mode = mode
     cfg.stt.live_mode = "words"
     cfg.stt.pass_interval = 0.05
+    cfg.output.live_insert = True
     injector = Injector()
     transcriber = WordTranscriber()
     d = Dictation(cfg, LiveRecorder(script_audio()), transcriber,

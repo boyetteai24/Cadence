@@ -50,14 +50,16 @@ class SttConfig:
     device: str = "auto"  # auto | cuda | cpu
     compute_type: str = "auto"  # auto | float16 | int8_float16 | int8 | float32
     language: str | None = "en"  # None = auto-detect (slightly slower)
-    beam_size: int = 1  # 1 = greedy (fastest); 5 = slightly more accurate
+    beam_size: int = 5  # 5 = more accurate; 1 = greedy (fastest)
     vad_filter: bool = True  # skip silent stretches; also curbs hallucinations
-    # Live transcription while you talk (typed live when hands-free, see output.live_insert):
-    # "words":  type each word once it's `lag_words` words behind you, and at every pause.
-    #           (Uses "pauses" instead when cleanup.llm is on: the LLM needs whole phrases.)
-    # "pauses": type each phrase at the next pause.
-    # "off":    transcribe everything after you stop.
-    live_mode: str = "words"
+    # Transcribe while you talk, so little is left to do when you stop:
+    # "pauses": each phrase at the next pause (whole phrases: most accurate).
+    # "words":  each word once it's `lag_words` words behind you, and at every pause.
+    #           (With live typing and an LLM on, "pauses" is used: the LLM needs phrases.)
+    # "off":    everything after you stop.
+    # Unless output.live_insert is on, nothing is typed until you stop, and then the whole
+    # dictation is cleaned up in one go.
+    live_mode: str = "pauses"
     lag_words: int = 5  # how far behind your voice the typing stays in "words" mode
     pass_interval: float = 0.4  # seconds between re-transcription passes in "words" mode
     pause_seconds: float = 0.6  # how long a pause ends a phrase
@@ -83,12 +85,15 @@ class CleanupConfig:
 class OutputConfig:
     method: str = "paste"  # "paste" (clipboard + Ctrl+V) or "type" (synthetic keystrokes)
     paste_keys: str = "ctrl+v"  # e.g. "ctrl+shift+v" for some terminals
-    restore_clipboard: bool = True
+    # False: your dictation stays on the clipboard, so if it didn't land in a text box you
+    # can just press Ctrl+V. True: whatever you had copied before is put back.
+    restore_clipboard: bool = False
     paste_delay_ms: int = 400  # wait before restoring the clipboard (runs in background)
     trailing_space: bool = True  # so consecutive dictations don't run together
-    # Hands-free (tap or click): type each phrase as soon as it's transcribed, while you
-    # keep talking. When holding the hotkey, text always waits until you let go.
-    live_insert: bool = True
+    # False (default): nothing is typed until you stop, then the whole dictation is cleaned
+    # up and pasted at once (best cleanup). True: when hands-free (tap or click), type each
+    # part as soon as it's ready, while you keep talking. Holding the hotkey always waits.
+    live_insert: bool = False
 
 
 @dataclass

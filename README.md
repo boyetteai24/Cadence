@@ -50,18 +50,19 @@ There are three ways to dictate:
   finish. Clicking it doesn't move your cursor, so the text still goes where you were typing.
   To move the button, **right-click and drag** it. Cadence remembers where you put it.
 
-**When you tap or click, text appears as you talk.** Each word is typed once you're about
-five words past it. That's far enough back that an "um" or a "no wait" right after it can
-still be handled. Whenever you pause briefly, everything so far is typed. When you hold the
-shortcut, the same work happens in the background, but the text waits until you let go
-(typing while keys are held would trigger shortcuts). Either way, the wait after you stop is
-only for your last few words.
+**The text appears when you finish**, like Wispr Flow: your whole dictation is cleaned up
+in one go and pasted at once. Cadence transcribes each phrase in the background during your
+pauses while you talk, so when you stop it only has your last few words left to do.
 
-Set `live_mode = "pauses"` to type whole phrases at each pause instead, or `"off"` to
-transcribe everything after you stop. With an AI cleanup model switched on, Cadence uses
-`"pauses"`, because the AI needs whole phrases to work with.
+**It also stays on your clipboard.** If your cursor wasn't in a text box when you finished,
+click where you want the text and press **Ctrl+V**. (Set `restore_clipboard = true` to put
+back what you had copied before instead.)
 
-**Esc** cancels the current recording. Words that were already typed stay.
+Prefer to see text while you talk? Set `live_insert = true` under `[output]` (works when you
+tap or click; holding the shortcut always waits until you let go). The trade-off: cleanup and
+the AI can't change words that are already typed.
+
+**Esc** cancels the current recording.
 - **Corrections:** "…at 3pm, no wait, 4pm" → "…at 4pm". "Scratch that" deletes the previous sentence.
 - **Formatting:** say "new line" or "new paragraph".
 - If text didn't land where you wanted it, use **tray → Copy last dictation**.
@@ -99,14 +100,17 @@ mode = "tap_or_hold"      # or "hold" (push-to-talk only) or "toggle"
 llm = "none"              # "claude" = Claude Haiku polishes your text; "local" = a model on your PC
 
 [stt]
-live_mode = "words"       # "words", "pauses" or "off"
-lag_words = 5             # how many words behind your voice the typing stays
-pass_interval = 0.4       # seconds between re-checks while you talk
+live_mode = "pauses"      # background transcription: "pauses", "words" or "off"
 pause_seconds = 0.6       # how long a pause ends a phrase
+beam_size = 5             # accuracy (5) vs. a little speed (1)
 model = "large-v3-turbo"  # "distil-large-v3" is faster; "small.en" runs on weak GPUs/CPU
 
+[output]
+live_insert = false       # true = text appears while you talk
+restore_clipboard = false # false = your dictation stays on the clipboard
+
 [dictionary]
-words = ["Kubernetes", "Anthropic"]
+words = ["Cadence", "Wispr Flow"]   # names Whisper should spell right
 ```
 
 ### AI cleanup with a local LLM
@@ -125,8 +129,8 @@ Any OpenAI-compatible server works. Point `local_url` and `local_model` at it.
 
 Only the transcribed text is sent to Anthropic, never audio. Dictations shorter than
 `min_words_for_llm` words skip Claude. If the API is slow or unreachable, Cadence types the
-rules-cleaned text instead. With an AI model on, text is typed phrase by phrase at pauses
-rather than word by word, because the AI needs whole phrases.
+rules-cleaned text instead. The AI sees your whole dictation at once (unless you turn on
+`live_insert`, in which case it sees one phrase at a time).
 
 ## Troubleshooting
 

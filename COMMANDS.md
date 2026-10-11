@@ -42,6 +42,14 @@ downloads the speech model (~1.6 GB) and can take a few minutes. After that it t
 
 ---
 
+## If the text didn't go anywhere
+
+If your cursor wasn't in a text box when you finished talking, the dictation is still on
+your clipboard: click where you want it and press **Ctrl+V**. (Or: tray icon → **Copy last
+dictation**.)
+
+---
+
 ## Stop Cadence
 
 Any one of these:
@@ -88,8 +96,9 @@ Some useful ones:
 |---|---|
 | `--llm claude` / `--llm none` / `--llm local` | AI cleanup: Claude, off, or a model on your PC |
 | `--set stt.lag_words=3` | Text follows your voice more closely (default 5) |
-| `--set stt.live_mode=pauses` | Type phrase by phrase at pauses instead of word by word |
-| `--set stt.live_mode=off` | Type everything only after you stop |
+| `--set output.live_insert=true` | Text appears while you talk (when you tap or click), instead of all at the end |
+| `--set stt.beam_size=1` | Slightly faster transcription, slightly more mistakes |
+| `--set output.restore_clipboard=true` | Put back what you had copied, instead of leaving the dictation on the clipboard |
 | `--set hotkey.mode=hold` | Push-to-talk only (no tapping) |
 | `--set ui.sounds=false` | No beeps |
 | `--set ui.button=false` | No mic button on screen |
@@ -107,8 +116,17 @@ notepad settings.toml
 ```
 
 (Or: tray icon → **Open settings**.) Every setting has an explanation next to it. If the file
-doesn't exist yet, start Cadence once and it gets created. To reset everything to the
-defaults, delete `settings.toml` and start Cadence again.
+doesn't exist yet, start Cadence once and it gets created.
+
+**Reset all settings to the current defaults.** Do this after an update whose notes say
+"defaults changed", since your `settings.toml` keeps the values it was created with. Stop
+Cadence first, then:
+
+```powershell
+del settings.toml
+```
+
+The next start creates a fresh one. (Any changes you'd made are lost, so note them first.)
 
 ---
 
@@ -210,4 +228,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.4.0 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.5.0 starting`.
