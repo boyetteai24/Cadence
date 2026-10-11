@@ -128,6 +128,7 @@ def words_app(mode="tap_or_hold"):
     cfg.ui.sounds = False
     cfg.hotkey.mode = mode
     cfg.stt.live_mode = "words"
+    cfg.cleanup.llm = "none"
     cfg.stt.pass_interval = 0.05
     cfg.output.live_insert = True
     injector = Injector()

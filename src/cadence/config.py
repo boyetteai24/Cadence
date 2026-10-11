@@ -70,9 +70,10 @@ class SttConfig:
 class CleanupConfig:
     remove_fillers: bool = True
     voice_commands: bool = True  # "new line", "new paragraph"
-    # LLM polish stage: "none" (rules only), "local" (OpenAI-compatible server such as
-    # Ollama / llama.cpp / LM Studio), or "claude" (needs ANTHROPIC_API_KEY).
-    llm: str = "none"
+    # LLM polish stage: "claude" (Claude Haiku; only active when ANTHROPIC_API_KEY is set,
+    # otherwise rules only), "local" (OpenAI-compatible server such as Ollama / llama.cpp /
+    # LM Studio), or "none" (rules only).
+    llm: str = "claude"
     min_words_for_llm: int = 4  # very short utterances skip the LLM
     timeout_s: float = 10.0
     local_url: str = "http://localhost:11434/v1"

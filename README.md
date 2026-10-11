@@ -8,7 +8,7 @@ and cleaned-up text is pasted wherever your cursor is.
 
 - **Local:** speech recognition runs on your NVIDIA GPU with
   [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (`large-v3-turbo`). Nothing leaves
-  your machine unless you turn on Claude.
+  your machine unless you set a Claude API key.
 - **Cleanup:** removes "um"/"uh", stutters and repeated words, applies corrections like
   *"at 3, no wait, 4"* and *"scratch that"*, and understands "new line" and "new paragraph".
   For more thorough grammar polish you can add a local LLM (Ollama, llama.cpp, LM Studio) or
@@ -80,7 +80,7 @@ delete the file and it will be recreated with the defaults.
 stays as it is, and the next normal start uses your saved settings again:
 
 ```powershell
-.\.venv\Scripts\python.exe -m cadence --llm claude                  # AI cleanup with Claude
+.\.venv\Scripts\python.exe -m cadence --llm none                    # no AI cleanup this time
 .\.venv\Scripts\python.exe -m cadence --set stt.lag_words=3          # any setting: section.name=value
 .\.venv\Scripts\python.exe -m cadence -v --llm none --set hotkey.mode=hold --set ui.sounds=false
 ```
@@ -97,7 +97,7 @@ combo = "ctrl+win"        # e.g. "ctrl_r", "ctrl+alt+space", "f9"
 mode = "tap_or_hold"      # or "hold" (push-to-talk only) or "toggle"
 
 [cleanup]
-llm = "none"              # "claude" = Claude Haiku polishes your text; "local" = a model on your PC
+llm = "claude"            # Claude Haiku polishes your text (needs the API key); "none" = rules only
 
 [stt]
 live_mode = "pauses"      # background transcription: "pauses", "words" or "off"
@@ -125,7 +125,8 @@ Any OpenAI-compatible server works. Point `local_url` and `local_model` at it.
 1. Get an API key from https://console.anthropic.com.
 2. Store it in an environment variable, never in a file. In PowerShell, run:
    `setx ANTHROPIC_API_KEY "sk-ant-..."` (with your real key), then close and reopen PowerShell.
-3. In `settings.toml`, set `llm = "claude"`, then restart Cadence.
+3. Restart Cadence. Claude cleanup (`llm = "claude"`) is the default; without a key, Cadence
+   uses the built-in rules only and sends nothing.
 
 Only the transcribed text is sent to Anthropic, never audio. Dictations shorter than
 `min_words_for_llm` words skip Claude. If the API is slow or unreachable, Cadence types the

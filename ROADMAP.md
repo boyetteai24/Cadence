@@ -36,6 +36,7 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       dictation cleaned in one pass; phrases still transcribed during pauses ("pauses" mode,
       beam size 5 for accuracy); dictation left on the clipboard; "or sorry" corrections;
       repeats with apostrophes ("I'm using I'm using") collapsed; smarter correction alignment
+- [x] Claude Haiku cleanup on by default (v0.6.0), active only when `ANTHROPIC_API_KEY` is set
 - [x] One-run overrides from the command line: `--llm claude`, `--set section.name=value`
 - [x] `COMMANDS.md`: copy-paste PowerShell cheat sheet in the project folder
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
