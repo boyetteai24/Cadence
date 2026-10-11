@@ -23,9 +23,10 @@ class HotkeyConfig:
     # Keys joined by "+". Names: ctrl, ctrl_l, ctrl_r, alt, alt_l, alt_r, shift, shift_l,
     # shift_r, win, space, tab, caps_lock, esc, f1..f24, or a single character.
     combo: str = "ctrl+win"
-    # "hold": record while the combo is held (push-to-talk).
+    # "tap_or_hold": hold to talk, or tap to start hands-free and tap again to stop.
+    # "hold": record only while the combo is held (push-to-talk).
     # "toggle": press once to start, again to stop.
-    mode: str = "hold"
+    mode: str = "tap_or_hold"
 
 
 @dataclass
@@ -79,6 +80,7 @@ class UiConfig:
     sounds: bool = True
     tray: bool = True
     overlay: bool = True  # status pill near the bottom of the screen
+    button: bool = True  # clickable mic button in the overlay (needs overlay = true)
 
 
 @dataclass
@@ -143,8 +145,8 @@ def load_config(path: Path | None = None) -> Config:
 
 
 def validate(cfg: Config) -> None:
-    if cfg.hotkey.mode not in ("hold", "toggle"):
-        raise ValueError("hotkey.mode must be 'hold' or 'toggle'")
+    if cfg.hotkey.mode not in ("tap_or_hold", "hold", "toggle"):
+        raise ValueError("hotkey.mode must be 'tap_or_hold', 'hold' or 'toggle'")
     if cfg.cleanup.llm not in ("none", "local", "claude"):
         raise ValueError("cleanup.llm must be 'none', 'local' or 'claude'")
     if cfg.output.method not in ("paste", "type"):

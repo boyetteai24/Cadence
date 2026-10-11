@@ -104,3 +104,60 @@ def test_toggle_mode():
     d.toggle()
     wait_idle(d)
     assert injector.inserted == ["Hello world "]
+
+
+def hotkey_app(mode):
+    d, injector = make(text="hello world")
+    d.cfg.hotkey.mode = mode
+    d.load()
+    return d, injector
+
+
+def test_tap_or_hold_hold_releases_to_stop():
+    d, injector = hotkey_app("tap_or_hold")
+    d.hotkey_down(now=10.0)
+    d.hotkey_up(now=12.0)  # held 2 s
+    wait_idle(d)
+    assert injector.inserted == ["Hello world "]
+
+
+def test_tap_or_hold_tap_starts_hands_free_and_tap_stops():
+    d, injector = hotkey_app("tap_or_hold")
+    d.hotkey_down(now=10.0)
+    d.hotkey_up(now=10.1)  # quick tap: keep listening
+    assert d.state == "recording"
+    d.hotkey_down(now=15.0)  # tap again: stop
+    d.hotkey_up(now=15.1)
+    wait_idle(d)
+    assert injector.inserted == ["Hello world "]
+
+
+def test_hold_mode_never_latches():
+    d, injector = hotkey_app("hold")
+    d.hotkey_down(now=10.0)
+    d.hotkey_up(now=10.1)
+    assert d.state != "recording"
+
+
+def test_click_starts_and_stops_and_hotkey_can_stop_it():
+    d, injector = hotkey_app("tap_or_hold")
+    d.click()
+    assert d.state == "recording"
+    d.click()
+    wait_idle(d)
+    assert injector.inserted == ["Hello world "]
+    d.click()
+    d.hotkey_down(now=20.0)  # shortcut also stops a click-started recording
+    d.hotkey_up(now=20.1)
+    wait_idle(d)
+    assert len(injector.inserted) == 2
+
+
+def test_escape_cancels_hands_free_recording():
+    d, injector = hotkey_app("tap_or_hold")
+    d.click()
+    d.cancel()
+    wait_idle(d)
+    assert injector.inserted == []
+    d.hotkey_down(now=30.0)  # fresh press starts a new recording, not a stale stop
+    assert d.state == "recording"

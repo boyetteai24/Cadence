@@ -5,9 +5,10 @@
 # Keys joined by "+": ctrl, alt, shift, win (either side) or ctrl_r, alt_l, ... ,
 # space, f1..f24, or a single character.
 combo = "ctrl+win"
-# "hold" = push-to-talk; "toggle" = press to start, press again to stop.
-# Esc cancels the current recording in either mode.
-mode = "hold"
+# "tap_or_hold" = hold to talk, OR tap once to start hands-free and tap again to stop.
+# "hold" = push-to-talk only; "toggle" = press to start, press again to stop.
+# Esc cancels the current recording in any mode.
+mode = "tap_or_hold"
 
 [audio]
 # device = 1            # index or name from `flow devices`; omit for system default
@@ -46,6 +47,7 @@ trailing_space = true
 sounds = true
 tray = true
 overlay = true            # "Listening" / "Transcribing" pill near the bottom of the screen
+button = true             # small mic button above the taskbar: click to start, click to stop
 
 [dictionary]
 # Names and jargon Whisper should spell correctly.

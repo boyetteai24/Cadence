@@ -40,6 +40,8 @@ class PasteInjector:
 
             if not win32.wait_for_modifiers_released():
                 log.warning("Modifier keys still held; pasting anyway")
+            if win32.dismiss_start_menu_if_open():
+                log.info("Closed the Start/Search menu that had taken focus")
             process, title = win32.foreground_window()
             log.info("Pasting into %s", process or "<unknown window>")
             log.debug("Target window title: %r", title)

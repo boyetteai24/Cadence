@@ -120,3 +120,22 @@ def foreground_window() -> tuple[str, str]:
             process = os.path.basename(path.value)
         kernel32.CloseHandle(handle)
     return process, title
+
+
+# Shell surfaces that pop up when the Win key is released on its own. If one of them has
+# focus at paste time, the user's real target window is right behind it.
+_SHELL_POPUPS = {"searchhost.exe", "startmenuexperiencehost.exe", "searchapp.exe"}
+
+
+def dismiss_start_menu_if_open(timeout_s: float = 0.6) -> bool:
+    """Close Start/Search with Esc and wait for focus to return. True if one was open."""
+    process, _ = foreground_window()
+    if process.lower() not in _SHELL_POPUPS:
+        return False
+    send_chord([0x1B])  # Esc
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        time.sleep(0.02)
+        if foreground_window()[0].lower() not in _SHELL_POPUPS:
+            break
+    return True

@@ -1,8 +1,10 @@
-"""On-screen status pill shown near the bottom of the screen.
+"""On-screen mic button and status pill, shown just above the taskbar.
 
-It shows "Listening" with a live mic-level meter, "Transcribing", start-up status and errors.
-The window never takes keyboard focus and ignores the mouse, so the paste still lands
-in the app you were typing in. Tk runs on its own thread; the pill polls Dictation state.
+Idle: a small mic button (click to start listening, click again to stop).
+Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
+and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
+doesn't move your cursor and the paste still lands in the app you were typing in.
+Tk runs on its own thread; the pill polls Dictation state.
 """
 
 from __future__ import annotations
@@ -32,13 +34,14 @@ ERROR_SECONDS = 4.0
 
 @dataclass
 class View:
-    kind: str  # "hidden" | "listening" | "working" | "message"
+    kind: str  # "hidden" | "button" | "listening" | "working" | "message"
     text: str = ""
     color: str = FG
 
 
 def compute_view(state: str, now: float, ready_at: float | None,
-                 error: tuple[float, str] | None, hotkey: str) -> View:
+                 error: tuple[float, str] | None, hotkey: str,
+                 show_button: bool = True) -> View:
     """What the pill should display right now (pure, so it's unit-testable)."""
     if error and now - error[0] < ERROR_SECONDS:
         return View("message", error[1], AMBER)
@@ -49,13 +52,17 @@ def compute_view(state: str, now: float, ready_at: float | None,
     if state == LOADING:
         return View("message", "Flow is loading…", FG)
     if state == IDLE and ready_at is not None and now - ready_at < READY_SECONDS:
-        return View("message", f"Flow ready · hold {hotkey}", FG)
+        return View("message", f"Flow ready · {hotkey} or click", FG)
+    if state == IDLE and show_button:
+        return View("button")
     return View("hidden")
 
 
 class Overlay:
-    def __init__(self, dictation, hotkey: str) -> None:
+    def __init__(self, dictation, hotkey: str, show_button: bool = True) -> None:
         self.dictation = dictation
+        self.show_button = show_button
+        self.view = View("hidden")
         self.hotkey = hotkey.replace("+", " + ").title()
         self.ready_at: float | None = None
         self.error: tuple[float, str] | None = None
@@ -101,6 +108,7 @@ class Overlay:
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
                                 highlightthickness=0, bd=0)
         self.canvas.pack()
+        self.canvas.bind("<Button-1>", self._on_click)
         root.update_idletasks()
         self.hwnd = None
         if sys.platform == "win32":
@@ -131,7 +139,9 @@ class Overlay:
         WS_EX_TOPMOST, WS_EX_TRANSPARENT = 0x8, 0x20
         WS_EX_TOOLWINDOW, WS_EX_NOACTIVATE, WS_EX_LAYERED = 0x80, 0x08000000, 0x80000
         style = user32.GetWindowLongW(self.hwnd, GWL_EXSTYLE)
-        style |= WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED
+        style |= WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED
+        if not self.show_button:
+            style |= WS_EX_TRANSPARENT  # purely informational: let clicks pass through
         user32.SetWindowLongW(self.hwnd, GWL_EXSTYLE, style)
 
     def _show(self) -> None:
@@ -166,12 +176,28 @@ class Overlay:
         try:
             recorder = self.dictation.recorder
             self.levels.append(getattr(recorder, "level", 0.0))
-            view = compute_view(self.dictation.state, time.monotonic(), self.ready_at,
-                                self.error, self.hotkey)
-            self._draw(view)
+            self.view = compute_view(self.dictation.state, time.monotonic(), self.ready_at,
+                                     self.error, self.hotkey, self.show_button)
+            self._draw(self.view)
         except Exception:
             log.debug("Overlay tick failed", exc_info=True)
         self.root.after(40, self._tick)
+
+    def _on_click(self, event) -> None:
+        if self.view.kind in ("button", "listening"):
+            # Off the Tk thread: opening the microphone can take a moment.
+            threading.Thread(target=self.dictation.click, daemon=True).start()
+
+    def _mic_button(self) -> None:
+        c, cx, cy, r = self.canvas, WIDTH // 2, HEIGHT // 2, HEIGHT // 2 - 2
+        c.create_oval(cx - r, cy - r, cx + r, cy + r, fill=BG, outline="#3f3f46", width=2)
+        # Microphone glyph.
+        c.create_oval(cx - 5, cy - 12, cx + 5, cy - 2, fill=FG, outline=FG)
+        c.create_rectangle(cx - 5, cy - 7, cx + 5, cy - 1, fill=FG, outline=FG)
+        c.create_oval(cx - 5, cy - 6, cx + 5, cy + 4, fill=FG, outline=FG)
+        c.create_arc(cx - 9, cy - 10, cx + 9, cy + 8, start=200, extent=140,
+                     style="arc", outline=FG, width=2)
+        c.create_line(cx, cy + 8, cx, cy + 12, fill=FG, width=2)
 
     def _draw(self, view: View) -> None:
         if view.kind == "hidden":
@@ -179,8 +205,12 @@ class Overlay:
             return
         c = self.canvas
         c.delete("all")
-        self._pill()
         font = ("Segoe UI", 11)
+        if view.kind == "button":
+            self._mic_button()
+            self._show()
+            return
+        self._pill()
         if view.kind == "listening":
             pulse = 5 + 2 * (int(time.monotonic() * 3) % 2)
             c.create_oval(20 - pulse, 22 - pulse, 20 + pulse, 22 + pulse, fill=RED, outline=RED)
