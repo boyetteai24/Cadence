@@ -24,8 +24,8 @@ subscription.
 | R8 | Responds quickly | Model preloaded and warmed; greedy decoding; LLM skipped for short utterances |
 | R9 | Unobtrusive background app | Tray icon, audio cues, `pythonw`, autostart, single instance |
 | R10 | No artificial word limits | Unbounded recording; long text cleaned in chunks |
-| R11 | Fully local by default | Default config makes no network calls (except the one-time model download) |
-| R12 | Optional Claude Haiku cleanup | `cleanup.llm = "claude"`, key from `ANTHROPIC_API_KEY` |
+| R11 | Local unless the user opts in | No network calls (except the one-time model download) unless `ANTHROPIC_API_KEY` is set |
+| R12 | Claude Haiku cleanup (owner's default) | `cleanup.llm = "claude"` is the default but only active when `ANTHROPIC_API_KEY` is set; otherwise rules only, nothing sent |
 | R13 | Swappable models | Each stage behind a small interface plus a factory driven by config |
 
 ## Architecture
@@ -113,7 +113,8 @@ earlier ones are still processing; results are inserted in order.
   "text appeared N ms after you stopped" (`after_stop`); with pause splitting it should stay
   under ~500 ms regardless of dictation length. Log timings for every dictation
   (`cadence -v` / `cadence.log`) and record benchmarks in `ROADMAP.md`.
-- **Privacy.** Default config must make no network calls after the model download. Do not log
+- **Privacy.** Without `ANTHROPIC_API_KEY` set, the default config must make no network calls
+  after the model download. With it, only transcribed text (never audio) goes to Anthropic. Do not log
   audio. Transcripts are logged only at DEBUG level (`cadence -v`); INFO logs timings only.
 - **No word limits.** Don't add caps on recording length or text length; chunk instead.
 - **Config.** Every new option gets a default in `config.py`, a plain-language commented entry

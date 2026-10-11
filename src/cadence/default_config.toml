@@ -26,12 +26,15 @@ mode = "tap_or_hold"
 #  AI cleanup (grammar polish after the built-in rules)
 # ---------------------------------------------------------------------------
 [cleanup]
+# "claude" = Claude Haiku polishes your text: removes "like"/"look"/"you know"-style fillers,
+#            fixes grammar and commas, merges repeats and restarts, applies corrections.
+#            Adds about half a second to a second, costs roughly a hundredth of a cent per
+#            dictation, and sends the text (never audio) to Anthropic. Only works when your
+#            API key is set (see below); without it Cadence quietly uses "none".
 # "none"   = built-in rules only: instant, free, fully offline.
-# "claude" = Claude Haiku polishes each phrase (about a tenth of a cent per dictation).
-#            Needs your Anthropic API key in an environment variable (see below).
 # "local"  = a model running on your PC (Ollama, LM Studio, llama.cpp). Free and private.
 # The AI sees your whole dictation at once (unless you turn on live typing below).
-llm = "none"
+llm = "claude"
 
 # Claude API key: never put it in this file. Cadence reads it only from the
 # ANTHROPIC_API_KEY environment variable, so it can't end up in a file you share or commit.

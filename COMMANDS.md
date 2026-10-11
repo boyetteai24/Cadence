@@ -65,13 +65,9 @@ Any one of these:
 Add options after `-m cadence`. Your saved `settings.toml` is **not** changed. The next
 normal start uses your saved settings again.
 
-**Claude cleanup, this run only** (needs your API key set, see below):
+Claude cleanup is **on by default** (as soon as your API key is set, see below).
 
-```powershell
-.\.venv\Scripts\python.exe -m cadence -v --llm claude
-```
-
-**Rules-only cleanup (no AI), this run only:**
+**Rules-only cleanup (no AI, nothing sent online), this run only:**
 
 ```powershell
 .\.venv\Scripts\python.exe -m cadence -v --llm none
@@ -87,7 +83,7 @@ normal start uses your saved settings again.
 **Several at once:**
 
 ```powershell
-.\.venv\Scripts\python.exe -m cadence -v --llm claude --set stt.lag_words=3 --set hotkey.mode=hold
+.\.venv\Scripts\python.exe -m cadence -v --llm none --set stt.beam_size=1 --set hotkey.mode=hold
 ```
 
 Some useful ones:
@@ -138,8 +134,9 @@ The next start creates a fresh one. (Any changes you'd made are lost, so note th
 setx ANTHROPIC_API_KEY "sk-ant-..."
 ```
 
-Then **close PowerShell and open a new one** (the key only shows up in new windows), and
-start Cadence with `--llm claude`, or set `llm = "claude"` in `settings.toml`.
+Then **close PowerShell and open a new one** (the key only shows up in new windows) and
+start Cadence. Claude cleanup is on by default, and the log no longer warns
+"ANTHROPIC_API_KEY ... isn't set". Without the key, Cadence uses the built-in rules only.
 
 **Check it's set** (prints "set" or "not set", never the key itself, so it's safe to
 screenshot):
@@ -228,4 +225,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.5.0 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.6.0 starting`.

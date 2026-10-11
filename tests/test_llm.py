@@ -106,3 +106,15 @@ def test_local_cleaner_openai_compatible(openai_stub):
     assert cleaner.clean("hello world") == "Hello, world."
     assert received["model"] == "test-model"
     assert received["messages"][0]["role"] == "system"
+
+
+def test_claude_is_default_but_only_used_with_an_api_key(monkeypatch):
+    from cadence.cleanup import build_cleaner
+    from cadence.config import Config
+
+    cfg = Config()
+    assert cfg.cleanup.llm == "claude"
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    assert build_cleaner(cfg).llm is None  # no key: rules only, nothing is sent anywhere
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    assert isinstance(build_cleaner(cfg).llm, ClaudeCleaner)
