@@ -142,7 +142,8 @@ class LocalLlmCleaner(LlmCleaner):
 
 
 class ClaudeCleaner(LlmCleaner):
-    """Claude Haiku via the Anthropic SDK. Reads ANTHROPIC_API_KEY from the environment."""
+    """Claude Haiku via the Anthropic SDK. The API key comes only from the ANTHROPIC_API_KEY
+    environment variable (never from a settings file)."""
 
     name = "claude"
 

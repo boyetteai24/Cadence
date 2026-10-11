@@ -1,4 +1,4 @@
-"""Thin ctypes wrappers around the Win32 calls Flow needs. Import only on Windows."""
+"""Thin ctypes wrappers around the Win32 calls Cadence needs. Import only on Windows."""
 
 from __future__ import annotations
 

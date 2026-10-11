@@ -1,7 +1,7 @@
 """On-screen mic button and status pill, shown just above the taskbar.
 
-Idle: a small mic button (click to start listening, click again to stop). Drag it
-anywhere; the position is remembered in overlay.json next to the config file.
+Idle: a small mic button (click to start listening, click again to stop). Right-click and
+drag to move it; the position is remembered in overlay.json next to the config file.
 Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
 and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
 doesn't move your cursor and the paste still lands in the app you were typing in.
@@ -18,7 +18,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from flow.app import IDLE, LOADING, PROCESSING, RECORDING
+from cadence.app import IDLE, LOADING, PROCESSING, RECORDING
 
 log = logging.getLogger(__name__)
 
@@ -30,13 +30,12 @@ FG = "#f4f4f5"
 RED = "#ef4444"
 AMBER = "#f59e0b"
 BLUE = "#60a5fa"
-DRAG_THRESHOLD = 5  # pixels of movement before a press becomes a drag
 READY_SECONDS = 2.5
 ERROR_SECONDS = 4.0
 
 
 def _state_file():
-    from flow.config import config_dir
+    from cadence.config import config_dir
 
     return config_dir() / "overlay.json"
 
@@ -90,9 +89,9 @@ def compute_view(state: str, now: float, ready_at: float | None,
     if state == PROCESSING:
         return View("working", "Transcribing", BLUE)
     if state == LOADING:
-        return View("message", "Flow is loading…", FG)
+        return View("message", "Cadence is loading…", FG)
     if state == IDLE and ready_at is not None and now - ready_at < READY_SECONDS:
-        return View("message", f"Flow ready · {hotkey} or click", FG)
+        return View("message", f"Cadence ready · {hotkey} or click", FG)
     if state == IDLE and show_button:
         return View("button")
     return View("hidden")
@@ -109,7 +108,7 @@ class Overlay:
         self.levels: collections.deque[float] = collections.deque([0.0] * 18, maxlen=18)
         dictation.listeners.append(self._on_state)
         dictation.error_listeners.append(self._on_error)
-        self._thread = threading.Thread(target=self._run, name="flow-overlay", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="cadence-overlay", daemon=True)
 
     def start(self) -> None:
         self._thread.start()
@@ -148,10 +147,12 @@ class Overlay:
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg=KEY_COLOR,
                                 highlightthickness=0, bd=0)
         self.canvas.pack()
-        self.canvas.bind("<ButtonPress-1>", self._on_press)
-        self.canvas.bind("<B1-Motion>", self._on_drag)
+        self.canvas.bind("<ButtonPress-1>", self._on_left_press)
         self.canvas.bind("<ButtonRelease-1>", self._on_release)
+        self.canvas.bind("<ButtonPress-3>", self._on_right_press)
+        self.canvas.bind("<ButtonRelease-3>", self._on_release)
         self._press: tuple[int, int, int, int] | None = None
+        self._press_button = "left"
         self._dragging = False
         root.update_idletasks()
         self.hwnd = None
@@ -233,32 +234,95 @@ class Overlay:
             log.debug("Overlay tick failed", exc_info=True)
         self.root.after(40, self._tick)
 
-    # Press + release without moving = click; press + move = drag the window.
-    def _on_press(self, event) -> None:
-        self._press = (event.x_root, event.y_root, self.root.winfo_x(), self.root.winfo_y())
-        self._dragging = False
+    # Left click = start/stop dictation. Right-click and drag = move the button.
+    # While a button is down we poll the real cursor and mouse-button state instead of
+    # relying on Tk motion/release events, which a no-activate window may not receive.
+    def _on_left_press(self, event) -> None:
+        self._start_press("left", drag=False)
 
-    def _on_drag(self, event) -> None:
-        if self._press is None:
+    def _on_right_press(self, event) -> None:
+        self._start_press("right", drag=True)
+
+    def _start_press(self, button: str, drag: bool) -> None:
+        if self._press is not None:
             return
-        px, py, wx, wy = self._press
-        dx, dy = event.x_root - px, event.y_root - py
-        if not self._dragging and abs(dx) + abs(dy) < DRAG_THRESHOLD:
-            return
-        self._dragging = True
-        self.root.geometry(f"+{wx + dx}+{wy + dy}")
+        self._press = (*self._cursor(), *self._window_pos())
+        self._press_button = button
+        self._dragging = drag
+        log.debug("Mic button %s-pressed", button)
+        self._poll_press()
 
     def _on_release(self, event) -> None:
+        if not self.hwnd:  # on Windows the poll loop detects the release itself
+            self._finish_press()
+
+    def _poll_press(self) -> None:
+        if self._press is None:
+            return
+        if self._dragging:
+            px, py, wx, wy = self._press
+            cx, cy = self._cursor()
+            self._move(wx + cx - px, wy + cy - py)
+        if self._mouse_down(self._press_button):
+            self.root.after(15, self._poll_press)
+        else:
+            self._finish_press()
+
+    def _finish_press(self) -> None:
         if self._press is None:
             return
         self._press = None
         if self._dragging:
             self._dragging = False
-            save_position(self.root.winfo_x(), self.root.winfo_y())
+            x, y = self._window_pos()
+            save_position(x, y)
+            log.debug("Mic button moved to %d,%d", x, y)
             return
         if self.view.kind in ("button", "listening"):
             # Off the Tk thread: opening the microphone can take a moment.
             threading.Thread(target=self.dictation.click, daemon=True).start()
+
+    def _cursor(self) -> tuple[int, int]:
+        if self.hwnd:
+            import ctypes
+            from ctypes import wintypes
+
+            pt = wintypes.POINT()
+            ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+            return pt.x, pt.y
+        return self.root.winfo_pointerxy()
+
+    def _window_pos(self) -> tuple[int, int]:
+        if self.hwnd:
+            import ctypes
+            from ctypes import wintypes
+
+            rect = wintypes.RECT()
+            ctypes.windll.user32.GetWindowRect(self.hwnd, ctypes.byref(rect))
+            return rect.left, rect.top
+        return self.root.winfo_x(), self.root.winfo_y()
+
+    def _mouse_down(self, button: str) -> bool:
+        if self.hwnd:
+            import ctypes
+
+            user32 = ctypes.windll.user32
+            # GetAsyncKeyState reads physical buttons; honor "swap mouse buttons".
+            physical_left = (button == "left") != bool(user32.GetSystemMetrics(23))
+            vk = 0x01 if physical_left else 0x02  # VK_LBUTTON / VK_RBUTTON
+            return bool(user32.GetAsyncKeyState(vk) & 0x8000)
+        return self._press is not None  # Tk's release event ends the press
+
+    def _move(self, x: int, y: int) -> None:
+        if self.hwnd:
+            import ctypes
+
+            SWP_NOSIZE, SWP_NOZORDER, SWP_NOACTIVATE = 0x1, 0x4, 0x10
+            ctypes.windll.user32.SetWindowPos(
+                self.hwnd, None, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE
+            )
+        else:
+            self.root.geometry(f"+{x}+{y}")
 
     def _mic_button(self) -> None:
         c, cx, cy, r = self.canvas, WIDTH // 2, HEIGHT // 2, HEIGHT // 2 - 2
@@ -287,7 +351,7 @@ class Overlay:
             pulse = 5 + 2 * (int(time.monotonic() * 3) % 2)
             c.create_oval(20 - pulse, 22 - pulse, 20 + pulse, 22 + pulse, fill=RED, outline=RED)
             c.create_text(36, 22, text=view.text, fill=FG, font=font, anchor="w")
-            # Live mic meter: you can see that Flow hears you.
+            # Live mic meter: you can see that Cadence hears you.
             x0 = 118
             for i, level in enumerate(self.levels):
                 h = max(2, min(26, int((level ** 0.5) * 80)))

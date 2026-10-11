@@ -1,5 +1,5 @@
-from flow.app import IDLE, LOADING, PROCESSING, RECORDING
-from flow.overlay import ERROR_SECONDS, READY_SECONDS, compute_view
+from cadence.app import IDLE, LOADING, PROCESSING, RECORDING
+from cadence.overlay import ERROR_SECONDS, READY_SECONDS, compute_view
 
 
 def view(state, now=100.0, ready_at=None, error=None):
@@ -7,7 +7,7 @@ def view(state, now=100.0, ready_at=None, error=None):
 
 
 def test_states_map_to_views():
-    assert view(LOADING).text == "Flow is loading…"
+    assert view(LOADING).text == "Cadence is loading…"
     assert view(RECORDING).kind == "listening"
     assert view(PROCESSING).kind == "working"
 
@@ -29,7 +29,7 @@ def test_idle_shows_mic_button_unless_disabled():
 
 
 def test_button_position_is_remembered(tmp_path, monkeypatch):
-    from flow import overlay
+    from cadence import overlay
 
     monkeypatch.setattr(overlay, "_state_file", lambda: tmp_path / "overlay.json")
     assert overlay.load_position() is None

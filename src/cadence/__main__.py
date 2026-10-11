@@ -1,5 +1,5 @@
 import sys
 
-from flow.cli import main
+from cadence.cli import main
 
 sys.exit(main())

@@ -57,3 +57,13 @@ def find_pause_cut(
     frame_len = int(sample_rate * FRAME_SECONDS)
     cut = (last_speech + 1) * frame_len + int(CUT_PADDING_SECONDS * sample_rate)
     return min(cut, len(audio))
+
+
+def speech_bounds(audio: np.ndarray, sample_rate: int) -> tuple[bool, float]:
+    """(contains speech, seconds of silence at the end)."""
+    rms = frame_rms(audio, sample_rate)
+    speaking = rms > speech_threshold(rms)
+    if not speaking.any():
+        return False, len(audio) / sample_rate
+    last = int(np.flatnonzero(speaking)[-1])
+    return True, (len(rms) - 1 - last) * FRAME_SECONDS

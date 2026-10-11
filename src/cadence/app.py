@@ -15,8 +15,8 @@ from typing import Callable
 
 import numpy as np
 
-from flow import sounds
-from flow.config import Config
+from cadence import sounds
+from cadence.config import Config
 
 log = logging.getLogger(__name__)
 
@@ -53,6 +53,7 @@ class Job:
     audio: np.ndarray
     utterance: Utterance
     final: bool
+    text: str | None = None  # already transcribed (live word mode): skip speech-to-text
 
 
 class Dictation:
@@ -78,7 +79,7 @@ class Dictation:
         self._jobs: queue.Queue[Job | None] = queue.Queue()
         self._pending = 0
         self._lock = threading.Lock()
-        self._worker = threading.Thread(target=self._work, name="flow-worker", daemon=True)
+        self._worker = threading.Thread(target=self._work, name="cadence-worker", daemon=True)
         self._pressed_at = 0.0
         self._latched = False  # recording continues after the shortcut is released
         self._ignore_next_up = False
@@ -129,10 +130,10 @@ class Dictation:
             self._utterance = Utterance()
             self._cut = 0
             self._set_state(RECORDING)
-        if self.cfg.stt.pause_split and hasattr(self.recorder, "read"):
-            threading.Thread(
-                target=self._split_on_pauses, args=(self._utterance,), daemon=True
-            ).start()
+        live = self.live_mode()
+        if live != "off" and hasattr(self.recorder, "read"):
+            target = self._type_words_live if live == "words" else self._split_on_pauses
+            threading.Thread(target=target, args=(self._utterance,), daemon=True).start()
         if self.cfg.ui.sounds:
             sounds.start()
 
@@ -154,10 +155,58 @@ class Dictation:
         if self.cfg.ui.sounds:
             sounds.stop()
 
+    def live_mode(self) -> str:
+        mode = self.cfg.stt.live_mode
+        if mode == "words" and self.cfg.cleanup.llm != "none":
+            return "pauses"  # an LLM can't polish sentence fragments
+        return mode
+
+    def _type_words_live(self, utterance: Utterance) -> None:
+        """While recording, re-transcribe the not-yet-typed audio every pass_interval and
+        commit words that are lag_words behind and stable across two passes (all words at
+        a pause). See streaming.py. Audio before the last committed word is dropped."""
+        from cadence import streaming
+        from cadence.segmenter import speech_bounds
+
+        sr = self.cfg.audio.sample_rate
+        stt = self.cfg.stt
+        prev: list | None = None
+        while True:
+            time.sleep(stt.pass_interval)
+            with self._lock:
+                if self.state != RECORDING or self._utterance is not utterance:
+                    return
+                base = self._cut
+            audio = self.recorder.read(base)
+            if len(audio) < 0.5 * sr:
+                continue
+            has_speech, silence = speech_bounds(audio, sr)
+            if not has_speech:
+                continue
+            at_pause = silence >= stt.pause_seconds
+            words = self.transcriber.transcribe(
+                audio, sr, context=utterance.context, word_timestamps=True
+            ).words
+            k = streaming.words_to_commit(prev, words, stt.lag_words, at_pause)
+            if k == 0:
+                prev = words
+                continue
+            cut = streaming.cut_seconds(words, k, len(audio) / sr)
+            text = streaming.join_words(words[:k])
+            with self._lock:
+                # If the user stopped meanwhile, the final job already covers this audio.
+                if self.state != RECORDING or self._utterance is not utterance:
+                    return
+                self._cut = base + int(cut * sr)
+                utterance.context = f"{utterance.context} {text}".strip()[-400:]
+                self._pending += 1
+                self._jobs.put(Job(audio[: int(cut * sr)], utterance, final=False, text=text))
+            prev = streaming.shift(words[k:], cut)
+
     def _split_on_pauses(self, utterance: Utterance) -> None:
         """While recording, hand each finished phrase to the worker at the next pause, so
         it's transcribed while the user keeps talking (and typed live when hands-free)."""
-        from flow.segmenter import find_pause_cut
+        from cadence.segmenter import find_pause_cut
 
         sr = self.cfg.audio.sample_rate
         while True:
@@ -264,7 +313,9 @@ class Dictation:
             return
         u.segments += 1
         self.last_result = u.result
-        text = self._transcribe_and_clean(job.audio, u, alone=job.final and u.segments == 1)
+        text = self._transcribe_and_clean(
+            job.audio, u, alone=job.final and u.segments == 1, raw=job.text
+        )
         if text:
             u.buffered.append(text)
         if not (job.final or (u.hands_free and self.cfg.output.live_insert)):
@@ -287,32 +338,36 @@ class Dictation:
                 u.result.audio_seconds, u.segments, u.result.timings["after_stop"] * 1000,
             )
 
-    def _transcribe_and_clean(self, audio: np.ndarray, u: Utterance, alone: bool) -> str:
+    def _transcribe_and_clean(
+        self, audio: np.ndarray, u: Utterance, alone: bool, raw: str | None = None
+    ) -> str:
         sr = self.cfg.audio.sample_rate
         result = u.result
         seconds = len(audio) / sr
         result.audio_seconds += seconds
-        # The short-tap guard only applies to a whole recording, not a trailing segment.
-        if alone and seconds < self.cfg.audio.min_seconds:
-            result.skipped = "too short"
-            return ""
-        if len(audio) == 0 or float(np.max(np.abs(audio))) < self.cfg.audio.min_peak:
-            result.skipped = result.skipped or "silence"
-            return ""
-
         timings: dict[str, float] = {}
-        t0 = time.perf_counter()
-        transcript = self.transcriber.transcribe(audio, sr, context=u.context)
-        timings["stt"] = time.perf_counter() - t0
-        raw = transcript.text.strip()
+        if raw is None:
+            # The short-tap guard only applies to a whole recording, not a trailing segment.
+            if alone and seconds < self.cfg.audio.min_seconds:
+                result.skipped = "too short"
+                return ""
+            if len(audio) == 0 or float(np.max(np.abs(audio))) < self.cfg.audio.min_peak:
+                result.skipped = result.skipped or "silence"
+                return ""
+            t0 = time.perf_counter()
+            raw = self.transcriber.transcribe(audio, sr, context=u.context).text
+            timings["stt"] = time.perf_counter() - t0
+        raw = raw.strip()
         if not raw:
             result.skipped = result.skipped or "no speech"
             return ""
+        # Mid-sentence continuation of earlier text: don't capitalize its first word.
+        continuation = bool(result.raw) and not result.raw.rstrip().endswith((".", "!", "?"))
         result.raw = f"{result.raw} {raw}".strip()
         u.context = result.raw[-400:]
 
         t0 = time.perf_counter()
-        text = self.cleaner.clean(raw)
+        text = self.cleaner.clean(raw, continuation=True) if continuation else self.cleaner.clean(raw)
         timings["cleanup"] = time.perf_counter() - t0
         timings.update(
             {f"cleanup.{k}": v for k, v in getattr(self.cleaner, "last_timings", {}).items()}
@@ -336,11 +391,14 @@ class Dictation:
 
 def run(cfg: Config) -> None:
     """Wire real components together and run until quit."""
-    from flow.audio import Recorder
-    from flow.cleanup import build_cleaner
-    from flow.hotkey import GlobalHotkeyListener
-    from flow.output import build_injector
-    from flow.stt import build_transcriber
+    from cadence import __version__
+
+    log.info("Cadence %s starting", __version__)
+    from cadence.audio import Recorder
+    from cadence.cleanup import build_cleaner
+    from cadence.hotkey import GlobalHotkeyListener
+    from cadence.output import build_injector
+    from cadence.stt import build_transcriber
 
     listener: GlobalHotkeyListener | None = None
 
@@ -367,14 +425,14 @@ def run(cfg: Config) -> None:
     )
 
     if cfg.ui.overlay:
-        from flow.overlay import Overlay
+        from cadence.overlay import Overlay
 
         Overlay(dictation, cfg.hotkey.combo, show_button=cfg.ui.button).start()
 
     tray = None
     if cfg.ui.tray:
         try:
-            from flow.tray import Tray
+            from cadence.tray import Tray
 
             tray = Tray(dictation, cfg)
         except ImportError:

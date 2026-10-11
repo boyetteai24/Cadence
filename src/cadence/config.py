@@ -1,7 +1,10 @@
-"""Configuration: typed dataclasses loaded from a TOML file.
+"""Configuration: typed dataclasses loaded from `settings.toml`.
 
-Location: %APPDATA%\\Flow\\config.toml on Windows, ~/.config/flow/config.toml elsewhere.
-Every field has a default, so an empty or missing file is valid.
+The settings file lives in the project folder (next to README.md) when Cadence runs from a
+source checkout, so it's easy to find; it is git-ignored, so `git pull` never touches it.
+Installed without a checkout, it lives in %APPDATA%\\Cadence (Windows) or ~/.config/cadence.
+It is created from default_config.toml on first run. Every field has a default, so missing
+lines are fine.
 """
 
 from __future__ import annotations
@@ -49,11 +52,16 @@ class SttConfig:
     language: str | None = "en"  # None = auto-detect (slightly slower)
     beam_size: int = 1  # 1 = greedy (fastest); 5 = slightly more accurate
     vad_filter: bool = True  # skip silent stretches; also curbs hallucinations
-    # Transcribe each phrase at the next pause while you keep talking, so text is ready
-    # (or typed live, see output.live_insert) almost as soon as you stop.
-    pause_split: bool = True
+    # Live transcription while you talk (typed live when hands-free, see output.live_insert):
+    # "words":  type each word once it's `lag_words` words behind you, and at every pause.
+    #           (Uses "pauses" instead when cleanup.llm is on: the LLM needs whole phrases.)
+    # "pauses": type each phrase at the next pause.
+    # "off":    transcribe everything after you stop.
+    live_mode: str = "words"
+    lag_words: int = 5  # how far behind your voice the typing stays in "words" mode
+    pass_interval: float = 0.4  # seconds between re-transcription passes in "words" mode
     pause_seconds: float = 0.6  # how long a pause ends a phrase
-    min_chunk_seconds: float = 2.0  # don't split off phrases shorter than this
+    min_chunk_seconds: float = 2.0  # "pauses" mode: don't split off phrases shorter than this
 
 
 @dataclass
@@ -67,7 +75,7 @@ class CleanupConfig:
     timeout_s: float = 10.0
     local_url: str = "http://localhost:11434/v1"
     local_model: str = "qwen2.5:3b-instruct"
-    claude_model: str = "claude-haiku-5-5"
+    claude_model: str = "claude-haiku-5-5"  # API key: ANTHROPIC_API_KEY environment variable only
     chunk_words: int = 600  # long dictations are cleaned in chunks of about this size
 
 
@@ -113,12 +121,19 @@ class Config:
 def config_dir() -> Path:
     if sys.platform == "win32":
         base = Path(os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming"))
-        return base / "Flow"
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "flow"
+        return base / "Cadence"
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "cadence"
+
+
+def project_root() -> Path | None:
+    """The source checkout this package runs from (where pyproject.toml is), if any."""
+    root = Path(__file__).resolve().parents[2]
+    return root if (root / "pyproject.toml").is_file() else None
 
 
 def default_config_path() -> Path:
-    return config_dir() / "config.toml"
+    root = project_root()
+    return (root if root else config_dir()) / "settings.toml"
 
 
 def _apply(obj: Any, data: dict[str, Any], prefix: str = "") -> None:
@@ -134,6 +149,45 @@ def _apply(obj: Any, data: dict[str, Any], prefix: str = "") -> None:
             _apply(current, value, f"{prefix}{key}.")
         else:
             setattr(obj, key, value)
+
+
+def _parse_value(raw: str) -> Any:
+    """TOML syntax when it parses (5, 0.4, true, "text", ["a"]), else a plain string, so
+    `--set cleanup.llm=claude` works without quotes."""
+    try:
+        return tomllib.loads(f"v = {raw}")["v"]
+    except tomllib.TOMLDecodeError:
+        return raw
+
+
+def apply_overrides(cfg: Config, overrides: list[str]) -> list[str]:
+    """Apply "section.key=value" settings for this run only (settings.toml is unchanged).
+    Returns a description of each change; raises ValueError with a helpful message."""
+    applied = []
+    for item in overrides:
+        key, sep, raw = item.partition("=")
+        key = key.strip()
+        section_name, dot, name = key.partition(".")
+        section = getattr(cfg, section_name, None) if dot else None
+        if not sep or section is None or not dataclasses.is_dataclass(section) or not any(
+            f.name == name for f in dataclasses.fields(section)
+        ):
+            raise ValueError(
+                f"Unknown setting {item!r}. Use section.name=value with the names from "
+                f"settings.toml, e.g. cleanup.llm=claude or stt.lag_words=3"
+            )
+        value = _parse_value(raw.strip())
+        current = getattr(section, name)
+        if isinstance(current, float) and isinstance(value, int) and not isinstance(value, bool):
+            value = float(value)
+        if current is not None and type(value) is not type(current):
+            raise ValueError(
+                f"{key} expects {type(current).__name__} (like {current!r}), got {raw.strip()!r}"
+            )
+        setattr(section, name, value)
+        applied.append(f"{key} = {value!r}")
+    validate(cfg)
+    return applied
 
 
 def config_from_dict(data: dict[str, Any]) -> Config:
@@ -155,6 +209,8 @@ def load_config(path: Path | None = None) -> Config:
 def validate(cfg: Config) -> None:
     if cfg.hotkey.mode not in ("tap_or_hold", "hold", "toggle"):
         raise ValueError("hotkey.mode must be 'tap_or_hold', 'hold' or 'toggle'")
+    if cfg.stt.live_mode not in ("words", "pauses", "off"):
+        raise ValueError("stt.live_mode must be 'words', 'pauses' or 'off'")
     if cfg.cleanup.llm not in ("none", "local", "claude"):
         raise ValueError("cleanup.llm must be 'none', 'local' or 'claude'")
     if cfg.output.method not in ("paste", "type"):

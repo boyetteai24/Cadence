@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from flow.config import config_from_dict, load_config
-from flow.hotkey import HotkeyMatcher
+from cadence.config import config_from_dict, load_config
+from cadence.hotkey import HotkeyMatcher
 
 
 def test_hold_combo_either_side():
@@ -49,7 +49,7 @@ def test_default_config_file_is_valid():
     import tomllib
     from importlib import resources
 
-    data = tomllib.loads(resources.files("flow").joinpath("default_config.toml").read_text())
+    data = tomllib.loads(resources.files("cadence").joinpath("default_config.toml").read_text())
     config_from_dict(data)
 
 
@@ -58,3 +58,60 @@ def test_invalid_values_rejected():
         config_from_dict({"cleanup": {"llm": "gpt"}})
     with pytest.raises(ValueError):
         config_from_dict({"hotkey": {"mode": "press"}})
+
+
+def test_settings_file_lives_in_the_project_folder():
+    from cadence.config import default_config_path, project_root
+
+    root = project_root()
+    assert root is not None and (root / "README.md").exists()
+    assert default_config_path() == root / "settings.toml"
+
+
+def test_every_option_is_in_the_settings_template():
+    import dataclasses
+    import tomllib
+    from importlib import resources
+
+    from cadence.config import Config
+
+    data = tomllib.loads(resources.files("cadence").joinpath("default_config.toml").read_text())
+    internal = {("audio", "sample_rate"), ("audio", "min_peak"), ("stt", "backend"),
+                ("audio", "device")}  # device is shown commented out
+    cfg = Config()
+    for section in dataclasses.fields(cfg):
+        for f in dataclasses.fields(getattr(cfg, section.name)):
+            if (section.name, f.name) not in internal:
+                assert f.name in data.get(section.name, {}), f"{section.name}.{f.name} missing"
+
+
+def test_one_run_overrides():
+    from cadence.config import Config, apply_overrides
+
+    cfg = Config()
+    changes = apply_overrides(cfg, ["cleanup.llm=claude", "stt.lag_words=3",
+                                    "stt.pass_interval=1", "ui.sounds=false",
+                                    'hotkey.combo="ctrl+alt+space"', "hotkey.mode=hold"])
+    assert cfg.cleanup.llm == "claude" and cfg.stt.lag_words == 3
+    assert cfg.stt.pass_interval == 1.0 and cfg.ui.sounds is False
+    assert cfg.hotkey.combo == "ctrl+alt+space" and cfg.hotkey.mode == "hold"
+    assert changes[0] == "cleanup.llm = 'claude'"
+
+
+@pytest.mark.parametrize("bad", ["cleanup.llm=gpt", "nope.x=1", "cleanup.nope=1", "llm=claude",
+                                 "stt.lag_words=many", "ui.sounds=yes", "cleanup.llm"])
+def test_bad_overrides_are_rejected(bad):
+    from cadence.config import Config, apply_overrides
+
+    with pytest.raises(ValueError):
+        apply_overrides(Config(), [bad])
+
+
+def test_cli_override_does_not_touch_settings_file(tmp_path, capsys):
+    from cadence.cli import main
+
+    settings = tmp_path / "settings.toml"
+    assert main(["--config", str(settings), "--llm", "none", "--set", "cleanup.remove_fillers=false",
+                 "clean", "um hello"]) == 0
+    assert capsys.readouterr().out.strip() == "Um hello"  # fillers kept: override applied
+    assert "remove_fillers = true" in settings.read_text()  # file still has the default

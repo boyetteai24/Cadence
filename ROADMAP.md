@@ -1,6 +1,6 @@
 # ROADMAP
 
-Status of Flow against the master spec in `AGENTS.md`. Update this file with every change.
+Status of Cadence against the master spec in `AGENTS.md`. Update this file with every change.
 
 ## Completed — v0.1 (minimal reliable version)
 
@@ -18,7 +18,7 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - [x] Clipboard-paste output with clipboard restore; synthetic typing alternative
 - [x] Ordered background processing queue (you can start the next dictation while one processes)
 - [x] Tray icon with state colors, "Copy last dictation", AI-cleanup switch, open config
-- [x] Audio cues, single-instance guard, autostart (`flow autostart on`), rotating log file
+- [x] Audio cues, single-instance guard, autostart (`cadence autostart on`), rotating log file
 - [x] Dev commands: `transcribe` (with timings / RTF), `clean`, `devices`, `init-config`
 - [x] On-screen status pill (listening + live mic meter, transcribing, ready, errors); never takes focus
 - [x] Paste via native SendInput after physical key release; target app logged; clipboard restored in background
@@ -27,8 +27,16 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
       automatically if it still grabbed focus before pasting; our own injected keys ignored
 - [x] Pause splitting: phrases transcribed at each pause while you talk; typed live when
       hands-free, buffered while the hotkey is held; earlier text passed as Whisper context
+- [x] Live word-by-word typing (default `live_mode = "words"`): words typed once 5 words
+      behind and stable across two passes, everything at pauses; continuation-aware cleanup
+- [x] Renamed to Cadence (package `cadence`, `python -m cadence`)
+- [x] All settings in one commented `settings.toml` in the project folder (git-ignored, created
+      on first run). The Claude API key is read only from `ANTHROPIC_API_KEY`, never a file
+- [x] One-run overrides from the command line: `--llm claude`, `--set section.name=value`
+- [x] `COMMANDS.md`: copy-paste PowerShell cheat sheet in the project folder
 - [x] "Text appeared N ms after you stopped" latency logged per dictation
-- [x] Draggable mic button; position remembered across restarts
+- [x] Mic button moved by right-click + drag; position remembered across restarts (drag tracks
+      the real cursor via Win32 polling, since Tk motion events didn't arrive on Windows)
 - [x] Unit tests for rules, LLM stage (fake client + stub server), pipeline, hotkeys, config
 
 ## Next — v0.2 (everyday polish)
@@ -39,7 +47,7 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - [ ] App-aware behavior: detect the foreground app (e.g. terminals use `ctrl+shift+v`;
       code editors skip trailing punctuation; chat apps casual tone)
 - [ ] Exclude dictation from Windows clipboard history (`ExcludeClipboardContentFromMonitorProcessing`)
-- [ ] Hot-reload of the config file; settings window instead of editing TOML
+- [ ] Hot-reload of settings.toml; settings window instead of editing TOML
 - [ ] Stuck-key protection: verify modifier state with `GetAsyncKeyState` after lock/unlock
 - [ ] Recommended local LLM presets + prompt tuned/evaluated on a small dictation test set
 
@@ -60,12 +68,13 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 - The mic button's click handling is untested on real hardware (Tk not available in the dev sandbox).
 - Clipboard restore only preserves text; images/files on the clipboard are left replaced by the
   transcript rather than restored.
-- Apps running as Administrator don't receive input from a non-elevated Flow (Windows UIPI).
-  Run Flow elevated if you need to dictate into elevated apps.
+- Apps running as Administrator don't receive input from a non-elevated Cadence (Windows UIPI).
+  Run Cadence elevated if you need to dictate into elevated apps.
 - Live insertion types each phrase separately, so "scratch that" or a correction can only fix
   text within the current phrase, and the optional LLM sees one phrase at a time.
-- Pause splitting has only been tested with simulated audio; `pause_seconds` and
-  `min_chunk_seconds` may need tuning on real speech.
+- Live typing ("words" and "pauses" modes) has only been tested with simulated audio;
+  `lag_words`, `pass_interval` and `pause_seconds` may need tuning on real speech and GPU.
+  Word mode re-transcribes about twice a second, so the GPU is busier while you talk.
 - `type` output mode sends newlines as Enter, which submits messages in chat apps.
 - Rules-only mode handles corrections only with explicit markers and short replacements
   (≤3 words); everything else needs the LLM stage.
@@ -73,8 +82,8 @@ Status of Flow against the master spec in `AGENTS.md`. Update this file with eve
 
 ## Performance benchmarks
 
-Measure with `python -m flow transcribe <file> --repeat 3` (report the warm runs) and the
-per-dictation timings in `flow.log`.
+Measure with `python -m cadence transcribe <file> --repeat 3` (report the warm runs) and the
+per-dictation timings in `cadence.log`.
 
 | Date | Hardware | Model / compute | Audio | STT | Cleanup | Insert | Notes |
 |------|----------|-----------------|-------|-----|---------|--------|-------|

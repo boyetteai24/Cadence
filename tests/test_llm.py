@@ -5,9 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from flow.cleanup import CleanupChain
-from flow.cleanup.llm import ClaudeCleaner, LocalLlmCleaner, accept_output, chunk_text
-from flow.cleanup.rules import RuleCleaner
+from cadence.cleanup import CleanupChain
+from cadence.cleanup.llm import ClaudeCleaner, LocalLlmCleaner, accept_output, chunk_text
+from cadence.cleanup.rules import RuleCleaner
 
 
 def test_guard_rejects_chatty_or_empty_output():

@@ -1,6 +1,6 @@
-# AGENTS.md — Flow development guide
+# AGENTS.md — Cadence development guide
 
-This is the master specification for Flow. Read it before changing code, and keep it current
+This is the master specification for Cadence. Read it before changing code, and keep it current
 when requirements or architecture change. Track progress in `ROADMAP.md`.
 
 ## Product goal
@@ -48,32 +48,42 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 
 | Path | Responsibility |
 |------|----------------|
-| `src/flow/config.py` | Typed dataclass config loaded from TOML; validation |
-| `src/flow/default_config.toml` | Commented default config (copied by `flow init-config`) |
-| `src/flow/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
-| `src/flow/audio.py` | Microphone capture; `read()` exposes audio while still recording |
-| `src/flow/segmenter.py` | Energy-based pause detection that picks phrase cut points |
-| `src/flow/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
-| `src/flow/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
-| `src/flow/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
-| `src/flow/output.py` | `PasteInjector`, `TypeInjector` |
-| `src/flow/tray.py` | pystray icon (state colors, menu) |
-| `src/flow/overlay.py` | Unfocusable, draggable mic button + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
-| `src/flow/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
-| `src/flow/sounds.py` | Start/stop/error beeps |
-| `src/flow/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
+| `src/cadence/config.py` | Typed dataclass config loaded from TOML; validation |
+| `src/cadence/default_config.toml` | Commented template for the user's `settings.toml` (copied on first run) |
+| `settings.toml` (project root, git-ignored) | The user's settings; `config.default_config_path()` |
+| `src/cadence/app.py` | `Dictation` state machine + pipeline; `run()` wires real components |
+| `src/cadence/audio.py` | Microphone capture; `read()` exposes audio while still recording |
+| `src/cadence/segmenter.py` | Energy-based pause detection: phrase cut points, trailing silence |
+| `src/cadence/streaming.py` | Local-agreement word commit logic for live word-by-word typing |
+| `src/cadence/stt/` | `Transcriber` protocol, `build_transcriber()`, faster-whisper backend |
+| `src/cadence/cleanup/` | `CleanupChain`, `build_cleaner()`, `rules.py`, `llm.py` (local + Claude) |
+| `src/cadence/hotkey.py` | Pure `HotkeyMatcher` + pynput `GlobalHotkeyListener` |
+| `src/cadence/output.py` | `PasteInjector`, `TypeInjector` |
+| `src/cadence/tray.py` | pystray icon (state colors, menu) |
+| `src/cadence/overlay.py` | Unfocusable mic button (left-click dictates, right-drag moves) + status pill (Tk thread): click to dictate, listening + mic meter, transcribing, errors; position saved in `overlay.json` |
+| `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
+| `src/cadence/sounds.py` | Start/stop/error beeps |
+| `src/cadence/cli.py` | Entry point and dev commands (`transcribe`, `clean`, `devices`, ...) |
 
 Input: the hotkey (`hotkey_down`/`hotkey_up`, modes `tap_or_hold` (default), `hold`, `toggle`)
 and the overlay's mic button (`click`) drive the same `Dictation` methods; Esc calls `cancel`.
 A tap shorter than `TAP_SECONDS` latches hands-free recording until the next press or click.
 
-Pause splitting (`segmenter.py`): while recording, a thread polls `Recorder.read()` and,
-at each pause (`stt.pause_seconds`) after at least `stt.min_chunk_seconds`, queues the finished
-phrase as a non-final `Job` of the current `Utterance`. Each segment is transcribed with the
-utterance's earlier text as Whisper context. Cleaned text is typed immediately when the
-utterance is hands-free (tap/click) and `output.live_insert` is on; otherwise it is buffered
-and inserted with the final segment. Never inject keystrokes while the user holds the hotkey.
-Cross-segment cleanup (e.g. "scratch that" undoing an already-typed phrase) is not possible.
+Live typing (`stt.live_mode`) runs a thread per recording that hands parts of the audio to
+the worker as non-final `Job`s of the current `Utterance`, advancing `Dictation._cut`:
+- `"words"` (default, `streaming.py`): every `pass_interval` the not-yet-committed audio is
+  re-transcribed with word timestamps. Words that are `lag_words` behind the newest word and
+  identical in two consecutive passes are committed as an already-transcribed `Job(text=...)`.
+  At a pause (`pause_seconds`), everything is committed. Audio is cut halfway into the gap
+  after the last committed word. Falls back to `"pauses"` when `cleanup.llm` is on.
+- `"pauses"` (`segmenter.py`): at each pause after `min_chunk_seconds`, the phrase is queued
+  as audio and transcribed by the worker.
+Each part is transcribed with the utterance's earlier text as Whisper context, and cleaned
+with `continuation=True` when it continues an unfinished sentence (no forced capital).
+Cleaned text is typed immediately when the utterance is hands-free (tap/click) and
+`output.live_insert` is on; otherwise it is buffered and inserted with the final job, which
+covers all audio after the last cut. Never inject keystrokes while the user holds the
+hotkey. Cleanup can't reach back into text that was already typed.
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.
@@ -98,12 +108,16 @@ earlier ones are still processing; results are inserted in order.
   local LLM < 600 ms, Claude Haiku < 1 s, insert < 150 ms. The number users feel is logged as
   "text appeared N ms after you stopped" (`after_stop`); with pause splitting it should stay
   under ~500 ms regardless of dictation length. Log timings for every dictation
-  (`flow -v` / `flow.log`) and record benchmarks in `ROADMAP.md`.
+  (`cadence -v` / `cadence.log`) and record benchmarks in `ROADMAP.md`.
 - **Privacy.** Default config must make no network calls after the model download. Do not log
-  audio. Transcripts are logged only at DEBUG level (`flow -v`); INFO logs timings only.
+  audio. Transcripts are logged only at DEBUG level (`cadence -v`); INFO logs timings only.
 - **No word limits.** Don't add caps on recording length or text length; chunk instead.
-- **Config.** Every new option gets a default in `config.py`, a commented entry in
-  `default_config.toml`, and validation if it's an enum.
+- **Config.** Every new option gets a default in `config.py`, a plain-language commented entry
+  in `default_config.toml` (a test checks that every option appears there), and validation if
+  it's an enum. Users edit `settings.toml` in the project root, created from that template on
+  first run and git-ignored. `--set section.name=value` / `--llm` override any option for
+  one run (`config.apply_overrides`, type-checked against the defaults); never write them back. Secrets (the Claude API key) are never read from settings
+  files, only from environment variables (`ANTHROPIC_API_KEY`); this repo is public.
 - **Claude API.** Use the official `anthropic` SDK. Default model `claude-haiku-5-5`, thinking
   disabled for latency, `max_retries=0` with a short timeout. Check `stop_reason`
   (`refusal`, `max_tokens`) before using the text.
@@ -114,10 +128,15 @@ earlier ones are still processing; results are inserted in order.
 py -3 -m venv .venv; .\.venv\Scripts\activate
 pip install -e ".[all,dev]"
 pytest                          # unit tests; run on any OS, no GPU or mic needed
-python -m flow -v               # run the app with console logging
-python -m flow transcribe sample.wav --repeat 3   # STT + cleanup timing
-python -m flow clean "um so I I think, no wait, I know"   # cleanup only
+python -m cadence -v               # run the app with console logging
+python -m cadence transcribe sample.wav --repeat 3   # STT + cleanup timing
+python -m cadence clean "um so I I think, no wait, I know"   # cleanup only
 ```
+
+`COMMANDS.md` is the user's copy-paste PowerShell cheat sheet. The user isn't familiar with
+PowerShell and runs commands exactly as written, so whenever a command, flag, path or setup
+step changes, update `COMMANDS.md` in the same change. Mark one-time steps, and say in the
+update notes (PR description) when a reinstall is needed.
 
 Git and PR conventions: PR descriptions and commit messages describe the change only. No
 Claude attribution or advertising lines ("Generated with Claude Code", Co-Authored-By
