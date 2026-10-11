@@ -24,8 +24,7 @@ WIDTH, HEIGHT = 560, 540
 
 class FeedbackWindow:
     def __init__(self, tk, master, heard: str, typed: str, cleanup: str,
-                 on_save: Callable[[Review], None], near: tuple[int, int] | None = None,
-                 scale: float = 1.0) -> None:
+                 on_save: Callable[[Review], None], near: tuple[int, int] | None = None) -> None:
         self.tk = tk
         self.heard, self.typed, self.cleanup = heard, typed, cleanup
         self.on_save = on_save
@@ -34,11 +33,9 @@ class FeedbackWindow:
         win.configure(bg=BG)
         win.attributes("-topmost", True)
         win.resizable(True, True)
-        # Fonts follow the display scale by themselves; the window size has to be scaled.
-        width, height = round(WIDTH * scale), round(HEIGHT * scale)
-        win.minsize(round(420 * scale), round(420 * scale))
-        x, y = self._position(win, near, width, height, scale)
-        win.geometry(f"{width}x{height}+{x}+{y}")
+        win.minsize(420, 420)
+        x, y = self._position(win, near)
+        win.geometry(f"{WIDTH}x{HEIGHT}+{x}+{y}")
 
         pad = {"padx": 14}
         self._label("What you said (as heard)").pack(anchor="w", pady=(12, 2), **pad)
@@ -83,17 +80,15 @@ class FeedbackWindow:
         return box
 
     @staticmethod
-    def _position(win, near: tuple[int, int] | None, width: int, height: int,
-                  scale: float) -> tuple[int, int]:
+    def _position(win, near: tuple[int, int] | None) -> tuple[int, int]:
         sw, sh = win.winfo_screenwidth(), win.winfo_screenheight()
-        gap = round(30 * scale)
         if near:
-            x, y = near[0] - width // 2, near[1] - height - gap
+            x, y = near[0] - WIDTH // 2, near[1] - HEIGHT - 30
             if y < 0:  # the button is at the top of the screen: open below it
-                y = near[1] + gap
+                y = near[1] + 30
         else:
-            x, y = (sw - width) // 2, (sh - height) // 2
-        return max(0, min(x, sw - width)), max(0, min(y, sh - height))
+            x, y = (sw - WIDTH) // 2, (sh - HEIGHT) // 2
+        return max(0, min(x, sw - WIDTH)), max(0, min(y, sh - HEIGHT))
 
     def save(self) -> None:
         review = Review(
