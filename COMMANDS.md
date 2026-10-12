@@ -122,6 +122,7 @@ Some useful ones:
 | `--set hotkey.mode=hold` | Push-to-talk only (no tapping) |
 | `--set ui.sounds=false` | No beeps |
 | `--set ui.button=false` | No mic button on screen |
+| `--set ui.smooth=false` | Older "classic" look for the button and pill (use this if the smooth look ever shows up wrong) |
 
 If you misspell a setting, Cadence stops and tells you what's wrong.
 
@@ -270,4 +271,4 @@ notepad $env:APPDATA\Cadence\cadence.log
 .\.venv\Scripts\python.exe -m cadence transcribe recording.wav --repeat 3
 ```
 
-**Show which version is running:** it's the first line of the log, `Cadence 0.10.1 starting`.
+**Show which version is running:** it's the first line of the log, `Cadence 0.11.0 starting`.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cadence"
-version = "0.10.1"
+version = "0.11.0"
 description = "System-wide, local-first voice dictation for Windows (faster-whisper + AI cleanup)."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,7 @@ dependencies = [
     "sounddevice>=0.4.6",
     "pynput>=1.8",
     "pyperclip>=1.8",
+    "Pillow>=10.1",
 ]
 
 [project.optional-dependencies]
