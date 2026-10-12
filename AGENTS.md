@@ -60,7 +60,8 @@ hotkey (pynput hook) ──► Dictation controller (app.py)
 | `src/cadence/output.py` | `PasteInjector`, `TypeInjector` |
 | `src/cadence/tray.py` | pystray icon (state colors, menu) |
 | `src/cadence/overlay.py` | Unfocusable idle bar that becomes a mic button on hover (left-click dictates, right-drag moves, snaps to the middle of any screen edge) + status pill (Tk thread): listening + mic meter, transcribing, errors; position and snapped edge saved in `overlay.json` |
-| `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search |
+| `src/cadence/overlay_render.py` | Pure Pillow drawing for the overlay (4x supersampled, per-pixel alpha, mint theme), `Layout` geometry at the display scale, pills sized to their content |
+| `src/cadence/win32.py` | ctypes Win32 helpers: SendInput paste chord, physical modifier state, foreground window, dismiss Start/Search, DPI awareness |
 | `src/cadence/feedback.py` | `FeedbackStore` (every review, JSON lines in the private settings folder, never in the repo), lessons for the LLM prompt, review dump |
 | `src/cadence/feedback_window.py` | Tk feedback window (heard / typed / corrected / notes); takes focus, unlike the overlay |
 | `src/cadence/sounds.py` | Start/stop/error beeps |
@@ -93,6 +94,14 @@ that re-reads the last `teach_count` reviews on every request and appends them t
 prompt (`feedback.lessons_for_prompt`). `cadence feedback --copy` exports reviews for the
 owner to paste into a session; turn recurring problems into rules, tests, dictionary words or
 prompt changes, and log them in ROADMAP's feedback log.
+
+Overlay drawing (`ui.smooth`, default on): frames are drawn by `overlay_render` and shown
+in a per-pixel-alpha layered window (`UpdateLayeredWindow`), and the process is DPI-aware so
+it's sharp on scaled displays. If a frame can't be shown that way, the overlay logs a warning
+and falls back to "classic" drawing (Tk canvas with a transparent key color) for the rest of
+the run; `ui.smooth = false` uses classic from the start and skips DPI awareness. Test overlay
+changes on Windows (or under Wine with a Windows Python: see ROADMAP) before merging: a
+smooth-drawing change that worked on Linux broke the button on Windows once (PR 18).
 
 States: `loading → idle ⇄ recording → processing → idle`. A new recording can start while
 earlier ones are still processing; results are inserted in order.

@@ -100,7 +100,10 @@ trailing_space = true     # add a space so the next dictation doesn't run on
 [ui]
 button = true             # bar that becomes a mic button on hover: left-click to dictate,
                           # right-click + drag to move (snaps to the middle of any screen edge)
-overlay = true            # "Listening" / "Transcribing" pill (the button needs this on)
+overlay = true            # "Live" / "Transcribing" pill (the button needs this on)
+smooth = true             # smooth, see-through button and pill, sharp on scaled screens.
+                          # false = the older "classic" look, in case smooth looks wrong
+                          # (Cadence also switches to classic by itself if smooth fails)
 tray = true               # icon by the clock, with a menu
 sounds = true             # beeps when listening starts and stops
 

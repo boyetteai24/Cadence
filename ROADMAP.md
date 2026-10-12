@@ -51,6 +51,13 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       before (a PR 18 attempt at smooth see-through drawing failed on Windows and was
       reverted). Next: step 2, sharp on scaled displays (DPI awareness, with an off switch);
       step 3, smooth see-through mint (off by default until tested on Windows)
+- [x] Smooth mint overlay (v0.11.0, steps 2+3 of the redesign): drawn with Pillow
+      (anti-aliased, see-through mint glass via per-pixel-alpha layered windows); DPI-aware,
+      so it's sharp on scaled displays; thinner pill and button; pills sized to their
+      content. Falls back to classic drawing by itself if Windows refuses the smooth drawing;
+      `ui.smooth = false` forces classic. Tested in Wine 9 with a Windows CPython 3.12
+      (python-build-standalone) at 100 % and 150 %: smooth, fallback and classic modes,
+      hover, click to start/stop, paste, right-drag + snap, full `app.run` with tray and hotkeys
 - [x] `settings.toml` tracked on GitHub (owner's choice): edited on GitHub, then `git pull`;
       tray "Edit settings on GitHub"; a mistake in it stops Cadence with a clear message
 - [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
@@ -87,8 +94,9 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
 - **Windows tests (2026-10-10):** transcription and overlay work on CUDA. The paste went to
   `SearchHost.exe`: releasing Ctrl+Win opened Start/Search, which stole focus (the Start-menu
   mask key was injected from inside the hook callback, too early). Fixed as above; needs re-test.
-- The hover bar and snap outlines were checked under a virtual X display, not yet on Windows
-  (hover detection there polls the cursor position, like the drag).
+- PR 18 (first smooth overlay) failed on the owner's Windows PC in a way Wine didn't reproduce
+  (cause unknown). v0.11.0 re-adds it with an automatic fallback and `ui.smooth = false`;
+  if it fails again, get the "Overlay:" lines from `cadence -v`.
 - Clipboard restore only preserves text; images/files on the clipboard are left replaced by the
   transcript rather than restored.
 - Apps running as Administrator don't receive input from a non-elevated Cadence (Windows UIPI).

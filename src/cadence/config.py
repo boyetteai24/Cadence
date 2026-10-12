@@ -93,6 +93,7 @@ class UiConfig:
     tray: bool = True
     overlay: bool = True  # status pill near the bottom of the screen
     button: bool = True  # clickable mic button in the overlay (needs overlay = true)
+    smooth: bool = True  # smooth see-through drawing (Windows); false = classic drawing
 
 
 @dataclass
