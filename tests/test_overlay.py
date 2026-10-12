@@ -19,7 +19,7 @@ def view(state, now=100.0, ready_at=None, error=None):
 
 def test_states_map_to_views():
     assert view(LOADING).text == "Cadence is loading…"
-    assert view(RECORDING).kind == "listening"
+    assert view(RECORDING).kind == "listening" and view(RECORDING).text == "Live"
     assert view(PROCESSING).kind == "working"
 
 

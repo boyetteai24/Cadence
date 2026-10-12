@@ -46,6 +46,11 @@ Status of Cadence against the master spec in `AGENTS.md`. Update this file with 
       right-drag shows four snap spots (middle of each screen edge, on the monitor you're on)
       and snaps when dropped near one, otherwise stays where dropped; snapped edge remembered
       and re-centred if the screen size changes
+- [x] Mint theme (v0.10.1, step 1 of the overlay redesign): mint bar, teal mic button, dark
+      pill with a mint edge and mint meter; "Listening" renamed "Live". Same Tk drawing as
+      before (a PR 18 attempt at smooth see-through drawing failed on Windows and was
+      reverted). Next: step 2, sharp on scaled displays (DPI awareness, with an off switch);
+      step 3, smooth see-through mint (off by default until tested on Windows)
 - [x] `settings.toml` tracked on GitHub (owner's choice): edited on GitHub, then `git pull`;
       tray "Edit settings on GitHub"; a mistake in it stops Cadence with a clear message
 - [x] `cadence clean "..."` reports whether Claude was used and why not; full SDK request path
