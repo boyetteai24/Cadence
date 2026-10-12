@@ -4,7 +4,7 @@ Idle: a thin bar that turns into a mic button when you hover it (click to start 
 click again to stop). Right-click and drag to move it anywhere; drop it near the middle of
 any screen edge (bottom, top, left, right) and it snaps there. Where it is, and which edge
 it's snapped to, is remembered in overlay.json next to the config file.
-Active: "Listening" with a live mic-level meter, then "Transcribing"; also start-up status
+Active: "Live" with a live mic-level meter, then "Transcribing"; also start-up status
 and errors. The window never takes keyboard focus (WS_EX_NOACTIVATE), so clicking it
 doesn't move your cursor and the paste still lands in the app you were typing in.
 Tk runs on its own thread; the pill polls Dictation state.
@@ -34,12 +34,14 @@ BAR_W, BAR_H = 46, 8  # idle bar
 PILL_W, PILL_H = 76, 32  # mic button shown on hover
 HOVER_LINGER = 0.4  # keep the button a moment after the cursor leaves (no flicker)
 KEY_COLOR = "#ff00fe"  # made fully transparent, gives the pill rounded corners
-BG = "#18181b"
-FG = "#f4f4f5"
-RED = "#ef4444"
-AMBER = "#f59e0b"
-BLUE = "#60a5fa"
-BORDER = "#71717a"
+# Mint theme.
+BG = "#0f172a"  # dark navy: status pill
+FG = "#f8fafc"
+MINT = "#5eead4"  # idle bar, pill edge, mic meter
+TEAL = "#14b8a6"  # mic button
+MINT_PALE = "#ccfbf1"  # button edge
+RED = "#f87171"
+AMBER = "#fbbf24"
 READY_SECONDS = 2.5
 NOTICE_SECONDS = 2.0
 ERROR_SECONDS = 4.0
@@ -227,9 +229,9 @@ def compute_view(state: str, now: float, ready_at: float | None,
     if notice and now - notice[0] < NOTICE_SECONDS:
         return View("message", notice[1], FG)
     if state == RECORDING:
-        return View("listening", "Listening", RED)
+        return View("listening", "Live", RED)
     if state == PROCESSING:
-        return View("working", "Transcribing", BLUE)
+        return View("working", "Transcribing", MINT)
     if state == LOADING:
         return View("message", "Cadence is loading…", FG)
     if state == IDLE and ready_at is not None and now - ready_at < READY_SECONDS:
@@ -402,9 +404,8 @@ class Overlay:
                 m["active"] = active
                 c, cx, cy = m["canvas"], content_x(name), HEIGHT // 2
                 c.delete("all")
-                color = BLUE if active else BORDER
-                _capsule(c, cx, cy, PILL_W, PILL_H, color)
-                _capsule(c, cx, cy, PILL_W - 4, PILL_H - 4, BG if active else KEY_COLOR)
+                _capsule(c, cx, cy, PILL_W, PILL_H, MINT_PALE if active else TEAL)
+                _capsule(c, cx, cy, PILL_W - 4, PILL_H - 4, TEAL if active else KEY_COLOR)
             if m["hwnd"]:
                 _set_window_pos(m["hwnd"], x, y)
             else:
@@ -440,10 +441,14 @@ class Overlay:
             self.root.withdraw()
 
     def _pill(self) -> None:
-        c, r = self.canvas, HEIGHT // 2
-        c.create_oval(0, 0, HEIGHT, HEIGHT, fill=BG, outline=BG)
-        c.create_oval(WIDTH - HEIGHT, 0, WIDTH, HEIGHT, fill=BG, outline=BG)
-        c.create_rectangle(r, 0, WIDTH - r, HEIGHT, fill=BG, outline=BG)
+        """Dark pill with a thin mint edge."""
+        c = self.canvas
+        for inset, color in ((0, MINT), (1, BG)):
+            c.create_oval(inset, inset, HEIGHT - inset, HEIGHT - inset, fill=color, outline=color)
+            c.create_oval(WIDTH - HEIGHT + inset, inset, WIDTH - inset, HEIGHT - inset,
+                          fill=color, outline=color)
+            c.create_rectangle(HEIGHT // 2, inset, WIDTH - HEIGHT // 2, HEIGHT - inset,
+                               fill=color, outline=color)
 
     def _tick(self) -> None:
         try:
@@ -598,14 +603,14 @@ class Overlay:
     def _bar(self) -> None:
         """Idle: a slim bar, out of the way until you hover it."""
         cx, cy = content_x(self.anchor), HEIGHT // 2
-        _capsule(self.canvas, cx, cy, BAR_W + 2, BAR_H + 2, BORDER)
-        _capsule(self.canvas, cx, cy, BAR_W, BAR_H, BG)
+        _capsule(self.canvas, cx, cy, BAR_W + 2, BAR_H + 2, TEAL)
+        _capsule(self.canvas, cx, cy, BAR_W, BAR_H, MINT)
 
     def _mic_button(self) -> None:
         """Hovered: a rounded button with a microphone."""
         c, cx, cy = self.canvas, content_x(self.anchor), HEIGHT // 2
-        _capsule(c, cx, cy, PILL_W + 2, PILL_H + 2, BORDER)
-        _capsule(c, cx, cy, PILL_W, PILL_H, BG)
+        _capsule(c, cx, cy, PILL_W + 2, PILL_H + 2, MINT_PALE)
+        _capsule(c, cx, cy, PILL_W, PILL_H, TEAL)
         c.create_line(cx, cy - 8, cx, cy - 1, fill=FG, width=7, capstyle="round")  # head
         c.create_arc(cx - 8, cy - 12, cx + 8, cy + 4, start=200, extent=140,
                      style="arc", outline=FG, width=2)  # holder
@@ -625,7 +630,7 @@ class Overlay:
             return
         self._pill()
         if view.kind == "feedback_prompt":
-            c.create_text(WIDTH // 2, 22, text=view.text, fill=BLUE, font=font)
+            c.create_text(WIDTH // 2, 22, text=view.text, fill=MINT, font=font)
             self._show()
             return
         if view.kind == "listening":
@@ -633,11 +638,11 @@ class Overlay:
             c.create_oval(20 - pulse, 22 - pulse, 20 + pulse, 22 + pulse, fill=RED, outline=RED)
             c.create_text(36, 22, text=view.text, fill=FG, font=font, anchor="w")
             # Live mic meter: you can see that Cadence hears you.
-            x0 = 118
+            x0 = 82
             for i, level in enumerate(self.levels):
                 h = max(2, min(26, int((level ** 0.5) * 80)))
                 x = x0 + i * 6
-                c.create_rectangle(x, 22 - h // 2, x + 3, 22 + h // 2, fill=FG, outline=FG)
+                c.create_rectangle(x, 22 - h // 2, x + 3, 22 + h // 2, fill=MINT, outline=MINT)
         elif view.kind == "working":
             dots = "." * (1 + int(time.monotonic() * 3) % 3)
             c.create_oval(14, 16, 26, 28, fill=view.color, outline=view.color)

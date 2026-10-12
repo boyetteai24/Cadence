@@ -27,7 +27,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
 The first start downloads the Whisper model (~1.6 GB). A small pill at the bottom of the screen
-says "Cadence is loading…", then "Cadence ready". While you hold the shortcut it shows **Listening**
+says "Cadence is loading…", then "Cadence ready". While you hold the shortcut it shows **Live**
 with a live mic meter, then **Transcribing** until the text is pasted. The tray icon (click the
 **^** by the clock if it's hidden) shows the same states:
 
@@ -47,7 +47,7 @@ There are three ways to dictate:
 - **Hold `Ctrl+Win`**, speak, and let go.
 - **Tap `Ctrl+Win`** once and talk hands-free. Tap again to finish.
 - **Click the mic button**: just above the taskbar there's a slim bar; hover it and it turns
-  into a mic button. Click, talk, then click the "Listening" pill to finish. Clicking it
+  into a mic button. Click, talk, then click the "Live" pill to finish. Clicking it
   doesn't move your cursor, so the text still goes where you were typing.
   To move it, **right-click and drag**. While you drag, outlines show the four snap spots
   (the middle of the bottom, top, left and right edges of the screen); drop it near one and
